@@ -25,7 +25,8 @@ BUILDERS_X_FEED_URL = (
     "https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-x.json"
 )
 BUILDERS_X_MAX_FEED_AGE_HOURS = 36
-BUILDERS_X_MIN_TEXT_LENGTH = 90
+BUILDERS_X_SNAPSHOT_HOURS = 24
+BUILDERS_X_MIN_TEXT_LENGTH = 60
 BUILDERS_X_TOPIC_RE = re.compile(
     r"(?:\b(?:ai|artificial intelligence|agentic|agents?|llms?|models?|inference|"
     r"training|benchmarks?|evals?|tokens?|multimodal|coding|codex|claude|anthropic|"
@@ -39,13 +40,14 @@ BUILDERS_X_SIGNAL_RE = re.compile(
     r"training|benchmarks?|evals?|tokens?|multimodal|coding|compute|open weights?|"
     r"foundation models?|neural|machine learning|research|paper|api|tools?|products?|"
     r"systems?|workflows?|releases?|released|launches?|launched|announces?|announced|"
-    r"ships?|shipped|updates?|updated)\b|"
+    r"ships?|shipped|updates?|updated|enterprise|enterprises|price|pricing|costs?|"
+    r"latency|speed|performance|adoption|developers?|dev stack)\b|"
     r"人工智能|智能体|大模型|模型|推理|训练|评测|多模态|编程|开源|发布|上线|研究)",
     re.IGNORECASE,
 )
 BUILDERS_X_PROMOTION_RE = re.compile(
     r"\b(?:we(?:'re| are) hiring|hiring (?:a|an|for)|apply (?:now|here)|"
-    r"job openings?|join (?:our|the) team)\b",
+    r"job openings?|join (?:our|the) team|reply or dm|dm me|tell me why)\b",
     re.IGNORECASE,
 )
 URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
@@ -309,7 +311,21 @@ def parse_builders_x(
     if not isinstance(entries, list):
         raise ValueError("Builders X feed x field must be an array")
     allowlist = {account["handle"].casefold(): account for account in accounts}
-    stats = {"posts": 0, "accepted": 0, "filtered": 0, "unknown_accounts": 0}
+    snapshot_cutoff = generated_at - timedelta(hours=BUILDERS_X_SNAPSHOT_HOURS)
+    oldest_allowed = cutoff - timedelta(hours=BUILDERS_X_MAX_FEED_AGE_HOURS)
+    snapshot_cutoff = max(snapshot_cutoff, oldest_allowed)
+    stats = {
+        "posts": 0,
+        "accepted": 0,
+        "filtered": 0,
+        "unknown_accounts": 0,
+        "invalid": 0,
+        "outside_snapshot": 0,
+        "too_short": 0,
+        "no_ai_topic": 0,
+        "no_signal": 0,
+        "promotion": 0,
+    }
     items: list[ContentItem] = []
     for account_entry in entries:
         if not isinstance(account_entry, dict):
@@ -346,17 +362,26 @@ def parse_builders_x(
                 and path_parts[1].casefold() == "status"
                 and path_parts[2] == item_id
             )
-            in_window = cutoff <= published_at <= now + timedelta(minutes=5)
-            if (
-                not item_id.isdigit()
-                or not valid_url
-                or not in_window
-                or len(text) < BUILDERS_X_MIN_TEXT_LENGTH
-                or not BUILDERS_X_TOPIC_RE.search(text)
-                or not BUILDERS_X_SIGNAL_RE.search(text)
-                or BUILDERS_X_PROMOTION_RE.search(text)
+            reason = ""
+            if not item_id.isdigit() or not valid_url:
+                reason = "invalid"
+            elif not (
+                snapshot_cutoff
+                <= published_at
+                <= generated_at + timedelta(minutes=5)
             ):
+                reason = "outside_snapshot"
+            elif len(text) < BUILDERS_X_MIN_TEXT_LENGTH:
+                reason = "too_short"
+            elif not BUILDERS_X_TOPIC_RE.search(text):
+                reason = "no_ai_topic"
+            elif not BUILDERS_X_SIGNAL_RE.search(text):
+                reason = "no_signal"
+            elif BUILDERS_X_PROMOTION_RE.search(text):
+                reason = "promotion"
+            if reason:
                 stats["filtered"] += 1
+                stats[reason] += 1
                 continue
             title_text = text if len(text) <= 72 else f"{text[:69].rstrip()}..."
             engagement = (
@@ -401,9 +426,18 @@ def fetch_builders_x(
         return [], SourceHealth(
             "builders_x", "error", 0, 1, 0, "curated public feed unavailable"
         )
+    generated_at = _parse_datetime(str(payload.get("generatedAt", "")))
+    lag_hours = max(
+        0.0,
+        (datetime.now(timezone.utc) - generated_at).total_seconds() / 3600,
+    )
     detail = (
         f"{len(accounts)} allowlisted accounts; {stats['posts']} posts checked; "
-        f"{stats['accepted']} accepted; {stats['filtered']} filtered"
+        f"{stats['accepted']} accepted; {stats['filtered']} filtered "
+        f"(snapshot={stats['outside_snapshot']}, short={stats['too_short']}, "
+        f"topic={stats['no_ai_topic']}, signal={stats['no_signal']}, "
+        f"promotion={stats['promotion']}, invalid={stats['invalid']}); "
+        f"snapshot lag {lag_hours:.1f}h"
     )
     return items, SourceHealth("builders_x", "ok", 1, 0, int(cached), detail)
 
