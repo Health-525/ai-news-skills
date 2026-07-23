@@ -8,14 +8,18 @@
 - AIHOT: the official public selected-items API; evidence comes from its supplied summary.
 - Builders X: the public `feed-x.json` maintained by `follow-builders`, restricted to the
   repository-owned `builders-x-accounts.json` allowlist. Evidence comes only from each accepted
-  post's own text. The collector rejects stale feeds, unknown accounts, link-only posts, short
-  posts, recruiting posts, posts without an AI/product/research signal, malformed canonical links,
-  and posts outside the window.
-- Window: the 24 hours preceding collection time.
+  post's own text. The collector rejects stale feeds, unknown accounts, link-only posts, posts under
+  60 meaningful characters, recruiting or response-solicitation posts, posts without an
+  AI/product/research signal, malformed canonical links, and posts outside the upstream snapshot.
+  Source health reports the count rejected by each filter.
+- Window: YouTube and AIHOT use the 24 hours preceding collection time. Builders X uses the newest
+  upstream 24-hour snapshot because that feed may refresh many hours before the 08:30 run. The feed
+  itself must still be no more than 36 hours old, and global item identity prevents an unchanged
+  snapshot from entering a later digest twice.
 
 The collector uses conditional requests when validators are available and can use a recent private
-cache during transient outages. Every fallback is visible in `source_health`; stale records outside
-the 24-hour window are still excluded.
+cache during transient outages. Every fallback is visible in `source_health`; stale YouTube and
+AIHOT records outside the report window are excluded, and stale X snapshots fail closed.
 
 ## Output schema
 

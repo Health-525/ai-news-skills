@@ -68,7 +68,7 @@ def main() -> int:
     items = validate_frozen_digest(source, markdown)
     cards = build_cards("2026-07-20", items)
     assert len(items) == 2 and len(cards) == 1
-    now = datetime(2026, 7, 21, 8, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
     accounts = [{"name": "Swyx", "handle": "swyx"}]
     x_payload = {
         "generatedAt": "2026-07-21T07:10:35Z",
@@ -115,6 +115,15 @@ def main() -> int:
                         "createdAt": "2026-07-21T03:00:00Z",
                         "url": "https://x.com/swyx/status/1005",
                     },
+                    {
+                        "id": "1006",
+                        "text": (
+                            "Gemini Flash is widely adopted by enterprises for its combination "
+                            "of price, intelligence, and speed."
+                        ),
+                        "createdAt": "2026-07-20T12:00:00Z",
+                        "url": "https://x.com/swyx/status/1006",
+                    },
                 ],
             },
             {
@@ -126,12 +135,20 @@ def main() -> int:
     x_items, x_stats = parse_builders_x(
         x_payload, accounts, now - timedelta(hours=24), now
     )
-    assert len(x_items) == 1 and x_items[0].source_type == "builders_x"
+    assert len(x_items) == 2
+    assert {item.item_id for item in x_items} == {"1001", "1006"}
+    assert all(item.source_type == "builders_x" for item in x_items)
     assert x_stats == {
-        "posts": 5,
-        "accepted": 1,
+        "posts": 6,
+        "accepted": 2,
         "filtered": 4,
         "unknown_accounts": 1,
+        "invalid": 0,
+        "outside_snapshot": 1,
+        "too_short": 1,
+        "no_ai_topic": 1,
+        "no_signal": 0,
+        "promotion": 1,
     }
     x_card = build_card(
         "2026-07-20",
@@ -316,6 +333,10 @@ def main() -> int:
 
         storage = Storage(Path(temporary))
         storage.initialize()
+        storage.add_new_items_to_digest("2026-07-21", x_items)
+        storage.add_new_items_to_digest("2026-07-22", x_items)
+        assert len(storage.items_for_digest("2026-07-21")) == 2
+        assert storage.items_for_digest("2026-07-22") == []
         existing_id = "UC" + "B" * 22
         new_id = "UC" + "A" * 22
         storage.seed_subscriptions([{"name": "Existing", "channel_id": existing_id}])
@@ -392,7 +413,7 @@ def main() -> int:
 
     diagnostics = doctor()
     assert diagnostics["status"] == "ok", json.dumps(diagnostics, ensure_ascii=False)
-    print(json.dumps({"status": "ok", "tests": 19}, ensure_ascii=False))
+    print(json.dumps({"status": "ok", "tests": 21}, ensure_ascii=False))
     return 0
 
 
