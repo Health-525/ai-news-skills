@@ -25,6 +25,7 @@ from radar.workflow import (
     load_runtime_env,
     prepare,
     render_cards,
+    scheduled_group_delivery_enabled,
     skill_root,
     state_dir,
 )
@@ -52,10 +53,11 @@ def _parser() -> argparse.ArgumentParser:
         ("prepare", "Collect and freeze dated RSS inputs"),
         ("card", "Validate frozen Markdown and render cards"),
         ("preview", "Send owner preview and create an approval draft"),
+        ("scheduled-group", "Send validated cards to the configured group without approval"),
     ):
         command_parser = subparsers.add_parser(command, help=help_text)
         command_parser.add_argument("date", nargs="?", help="YYYY-MM-DD; defaults to Shanghai today")
-        if command == "preview":
+        if command in {"preview", "scheduled-group"}:
             command_parser.add_argument("--dry-run", action="store_true")
 
     send_parser = subparsers.add_parser("send", help="Send the validated private owner card")
@@ -219,6 +221,36 @@ def _handle_preview(date_str: str, dry_run: bool) -> int:
     return code
 
 
+def _handle_scheduled_group(date_str: str, dry_run: bool) -> int:
+    if not scheduled_group_delivery_enabled():
+        _print(
+            {
+                "status": "failed",
+                "error": "scheduled group delivery is not explicitly enabled",
+            }
+        )
+        return 1
+    group_target = _target("AI_NEWS_FEISHU_GROUP_TARGET")
+    if not group_target:
+        _print({"status": "failed", "error": "group target is not configured"})
+        return 1
+    code, cards_or_error = _cards(date_str)
+    if code:
+        _print(cards_or_error)
+        return code
+    assert isinstance(cards_or_error, list)
+    code, result = send_group_cards(
+        cards_or_error,
+        group_target,
+        state_dir() / "receipts" / "scheduled-groups" / f"{date_str}.json",
+        skill_root() / "scripts" / "send_feishu_card.mjs",
+        dry_run=dry_run,
+    )
+    result["delivery_mode"] = "scheduled_group"
+    _print(result)
+    return code
+
+
 def _handle_approve(args: argparse.Namespace) -> int:
     try:
         _require_owner(args.requester_id)
@@ -296,6 +328,8 @@ def main() -> int:
         return exit_code
     if args.command == "preview":
         return _handle_preview(date_str, args.dry_run)
+    if args.command == "scheduled-group":
+        return _handle_scheduled_group(date_str, args.dry_run)
     if args.command == "send":
         exit_code, cards_or_error = _cards(date_str)
         if exit_code:

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import tempfile
+from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from daily_pipeline import _handle_scheduled_group
 from radar.approval import build_approval_card
 from radar.delivery import _parse_bridge_payload, send_group_cards, send_personal_cards
 from radar.digest import FrozenItem, build_card, build_cards, validate_frozen_digest
@@ -16,7 +19,7 @@ from radar.source_material import source_text_status
 from radar.sources import load_builders_x_accounts, parse_builders_x
 from radar.storage import Storage
 from radar.subscriptions import build_subscription_result_card, validate_batch
-from radar.workflow import artifact_paths, doctor
+from radar.workflow import artifact_paths, doctor, scheduled_group_delivery_enabled
 
 
 def main() -> int:
@@ -295,12 +298,41 @@ def main() -> int:
     assert _parse_bridge_payload('OpenClaw log\n{"status":"sent"}\n') == {"status": "sent"}
     approval_card = build_approval_card("digest-test")
     assert "通过日报 digest-test" in approval_card["body"]["elements"][0]["content"]
+    original_auto_group = os.environ.get("AI_NEWS_AUTO_GROUP_DELIVERY")
+    os.environ.pop("AI_NEWS_AUTO_GROUP_DELIVERY", None)
+    assert not scheduled_group_delivery_enabled()
+    os.environ["AI_NEWS_AUTO_GROUP_DELIVERY"] = "1"
+    assert scheduled_group_delivery_enabled()
+    os.environ["AI_NEWS_AUTO_GROUP_DELIVERY"] = "false"
+    assert not scheduled_group_delivery_enabled()
+    if original_auto_group is None:
+        os.environ.pop("AI_NEWS_AUTO_GROUP_DELIVERY", None)
+    else:
+        os.environ["AI_NEWS_AUTO_GROUP_DELIVERY"] = original_auto_group
 
     original_state = os.environ.get("AI_NEWS_STATE_DIR")
+    original_group_target = os.environ.get("AI_NEWS_FEISHU_GROUP_TARGET")
+    original_auto_group = os.environ.get("AI_NEWS_AUTO_GROUP_DELIVERY")
     with tempfile.TemporaryDirectory() as temporary:
         os.environ["AI_NEWS_STATE_DIR"] = temporary
         paths = artifact_paths("2026-07-20")
         assert paths["state"] == Path(temporary)
+        paths["source"].parent.mkdir(parents=True, exist_ok=True)
+        paths["source"].write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        paths["digest"].write_text(markdown, encoding="utf-8")
+        os.environ["AI_NEWS_FEISHU_GROUP_TARGET"] = "group"
+        os.environ["AI_NEWS_AUTO_GROUP_DELIVERY"] = "1"
+        output = io.StringIO()
+        with redirect_stdout(output):
+            scheduled_code = _handle_scheduled_group("2026-07-20", dry_run=True)
+        scheduled_result = json.loads(output.getvalue())
+        assert scheduled_code == 0
+        assert scheduled_result == {
+            "status": "dry_run",
+            "target_type": "group",
+            "cards": len(cards),
+            "delivery_mode": "scheduled_group",
+        }
         target = "private-test-target"
         cards_bytes = json.dumps(cards, ensure_ascii=False, sort_keys=True).encode("utf-8")
         target_hash = hashlib.sha256(target.encode("utf-8")).hexdigest()
@@ -410,10 +442,18 @@ def main() -> int:
         os.environ.pop("AI_NEWS_STATE_DIR", None)
     else:
         os.environ["AI_NEWS_STATE_DIR"] = original_state
+    if original_group_target is None:
+        os.environ.pop("AI_NEWS_FEISHU_GROUP_TARGET", None)
+    else:
+        os.environ["AI_NEWS_FEISHU_GROUP_TARGET"] = original_group_target
+    if original_auto_group is None:
+        os.environ.pop("AI_NEWS_AUTO_GROUP_DELIVERY", None)
+    else:
+        os.environ["AI_NEWS_AUTO_GROUP_DELIVERY"] = original_auto_group
 
     diagnostics = doctor()
     assert diagnostics["status"] == "ok", json.dumps(diagnostics, ensure_ascii=False)
-    print(json.dumps({"status": "ok", "tests": 21}, ensure_ascii=False))
+    print(json.dumps({"status": "ok", "tests": 23}, ensure_ascii=False))
     return 0
 
 
