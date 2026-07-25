@@ -17,6 +17,7 @@ from .sources import collect_sources, load_builders_x_accounts, load_channels
 from .storage import Storage, atomic_write_json
 
 RUNTIME_ENV_KEYS = {
+    "AI_NEWS_AUTO_GROUP_DELIVERY",
     "AI_NEWS_FEISHU_PERSONAL_TARGET",
     "AI_NEWS_FEISHU_GROUP_TARGET",
     "AI_NEWS_OWNER_ID",
@@ -48,6 +49,15 @@ def load_runtime_env() -> None:
         key = key.strip()
         if key in RUNTIME_ENV_KEYS and key not in os.environ:
             os.environ[key] = value.strip()
+
+
+def scheduled_group_delivery_enabled() -> bool:
+    return os.environ.get("AI_NEWS_AUTO_GROUP_DELIVERY", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def channels_file() -> Path:

@@ -1,6 +1,6 @@
 ---
 name: ai-news-skills
-description: Collect YouTube channel RSS descriptions, AIHOT selected items, and curated Builders X posts, prepare evidence-bounded Chinese AI daily cards, manage batch YouTube subscriptions with validation and owner confirmation, and enforce private-preview approval before group delivery. Use for AI 前哨、AI 风向标、RSS 日报、X 动态、频道订阅新增或批量校验、日报审核、飞书个人预览及批准后的群投递。Never fetch captions, download media, transcribe videos, or use transcript/S3 handoffs.
+description: Collect YouTube channel RSS descriptions, AIHOT selected items, and curated Builders X posts, prepare evidence-bounded Chinese AI daily cards, manage batch YouTube subscriptions with validation and owner confirmation, deliver an explicitly enabled scheduled digest directly to the configured group, and enforce owner approval for manual group publication. Use for AI 前哨、AI 风向标、RSS 日报、X 动态、频道订阅新增或批量校验、定时飞书群投递、日报审核及手动批准后的群投递。Never fetch captions, download media, transcribe videos, or use transcript/S3 handoffs.
 ---
 
 # AI News Skills
@@ -18,9 +18,9 @@ values.
    [references/editorial-policy.md](references/editorial-policy.md), then write every record to the
    returned `digest_file`. Choose any evidence-supported highlight count.
 5. Run `python {baseDir}/scripts/daily_pipeline.py card YYYY-MM-DD`; fix the Markdown until valid.
-6. Run `python {baseDir}/scripts/daily_pipeline.py preview YYYY-MM-DD`.
-7. Treat structured `sent` or matching `skipped` as successful owner preview. Report counts without
-   exposing identifiers. Do not send to a group during the scheduled run.
+6. Run `python {baseDir}/scripts/daily_pipeline.py scheduled-group YYYY-MM-DD`.
+7. Treat structured `sent` or matching `skipped` as successful scheduled delivery. Report counts
+   without exposing identifiers. Do not send a personal preview or create an approval draft.
 
 ## Subscription routing
 
@@ -54,7 +54,8 @@ never a command argument. Approval sends only the exact cards frozen in that dra
   configuration, cron definitions, or delivery logic.
 - Never summarize an unavailable record or infer details from its title.
 - Label summaries `来源摘要`, never `事实摘要` or `字幕摘要`.
-- Never send a scheduled group message; group delivery requires a fresh owner approval.
+- Scheduled group delivery is allowed only through `scheduled-group` when the external runtime
+  explicitly enables it. Manual group publication still requires fresh owner approval.
 - Never modify OpenClaw/Feishu configuration during normal Skill execution.
 - Keep credentials, targets, state, reports, receipts, and caches outside the Skill.
 

@@ -46,12 +46,14 @@ Optional environment variables:
 
 - `AI_NEWS_YOUTUBE_CHANNELS_FILE`: external channel-list override.
 - `AI_NEWS_FEISHU_PERSONAL_TARGET`: private owner preview target.
-- `AI_NEWS_FEISHU_GROUP_TARGET`: approval-only group target.
+- `AI_NEWS_FEISHU_GROUP_TARGET`: configured group target.
+- `AI_NEWS_AUTO_GROUP_DELIVERY`: explicit opt-in for approval-free scheduled group delivery;
+  accepted true values are `1`, `true`, `yes`, and `on`.
 - `AI_NEWS_OWNER_ID`: authenticated owner identity used for proposal and draft authorization.
 - `OPENCLAW_FEISHU_ACCOUNT_ID`: optional configured Feishu account name.
 - `OPENCLAW_FEISHU_SEND_MODULE` and `OPENCLAW_CONFIG_MODULE`: native-card compatibility overrides.
 - `AI_NEWS_CARD_RETRIES`: transient delivery attempts, clamped to one through five.
 
-Deployment may keep the three target/owner values in `runtime.env` under the external state
+Deployment may keep the target, owner, and scheduled-delivery values in `runtime.env` under the external state
 directory with mode `600`. No `.env`, credential, target, database, cache, report, or receipt
 belongs inside the Skill folder, and runtime values must never be printed.
