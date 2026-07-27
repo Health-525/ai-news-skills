@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .digest import build_cards, validate_frozen_digest
+from .official_news import load_official_sources
 from .source_material import source_text_status
 from .sources import collect_sources, load_builders_x_accounts, load_channels
 from .storage import Storage, atomic_write_json
@@ -20,6 +21,7 @@ RUNTIME_ENV_KEYS = {
     "AI_NEWS_AUTO_GROUP_DELIVERY",
     "AI_NEWS_FEISHU_PERSONAL_TARGET",
     "AI_NEWS_FEISHU_GROUP_TARGET",
+    "AI_NEWS_OFFICIAL_SOURCES_FILE",
     "AI_NEWS_OWNER_ID",
     "OPENCLAW_FEISHU_ACCOUNT_ID",
 }
@@ -69,6 +71,15 @@ def builders_x_accounts_file() -> Path:
     return skill_root() / "references" / "builders-x-accounts.json"
 
 
+def official_news_sources_file() -> Path:
+    configured = os.environ.get("AI_NEWS_OFFICIAL_SOURCES_FILE", "").strip()
+    return (
+        Path(configured).expanduser()
+        if configured
+        else skill_root() / "references" / "official-news-sources.json"
+    )
+
+
 def artifact_paths(date_str: str) -> dict[str, Path]:
     root = state_dir()
     reports = root / "reports"
@@ -116,6 +127,12 @@ def doctor() -> dict[str, object]:
             "ok",
             f"{len(builders_x_accounts)} valid allowlisted accounts",
         )
+    try:
+        official_sources = load_official_sources(official_news_sources_file())
+    except ValueError as error:
+        add("official-news-sources", "error", str(error))
+    else:
+        add("official-news-sources", "ok", f"{len(official_sources)} valid official sources")
     existing = _nearest_existing(state_dir())
     writable = existing.is_dir() and os.access(existing, os.W_OK)
     add(
@@ -174,11 +191,12 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
             storage.initialize()
             storage.seed_subscriptions(load_channels(channels_file()))
             channels = storage.active_channels()
+            official_sources = load_official_sources(official_news_sources_file())
             builders_x_accounts = load_builders_x_accounts(builders_x_accounts_file())
             now = datetime.now(timezone.utc)
             cutoff = now - timedelta(hours=24)
             items, health = collect_sources(
-                channels, builders_x_accounts, cutoff, storage
+                channels, official_sources, builders_x_accounts, cutoff, storage
             )
             if all(entry.status == "error" for entry in health):
                 return 1, {
@@ -220,6 +238,7 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
         return 1, {"status": "failed", "stage": "prepare", "error": str(error)}
 
     available = sum(record["source_text_status"] == "available" for record in records)
+    official_news = sum(record["source_type"] == "official_news" for record in records)
     youtube = sum(record["source_type"] == "youtube" for record in records)
     aihot = sum(record["source_type"] == "aihot" for record in records)
     builders_x = sum(record["source_type"] == "builders_x" for record in records)
@@ -228,6 +247,7 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
         "status": result_status,
         "date": date_str,
         "total": len(records),
+        "official_news": official_news,
         "youtube": youtube,
         "aihot": aihot,
         "builders_x": builders_x,

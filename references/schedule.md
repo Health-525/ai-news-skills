@@ -15,9 +15,9 @@ needed only for evidence-bounded Chinese summaries and highlight selection.
    configured group only when `AI_NEWS_AUTO_GROUP_DELIVERY` is explicitly enabled.
 7. Stop. Do not call `preview` or `approve` from the cron run.
 
-Success requires structured `sent` or a matching `skipped` receipt. Report total, YouTube, AIHOT,
-Builders X, available, unavailable, highlights, source failures, card count, and group delivery
-status. Never expose credentials or identifiers.
+Success requires structured `sent` or a matching `skipped` receipt. Report total, official news,
+YouTube, AIHOT, Builders X, available, unavailable, highlights, source failures, card count, and
+group delivery status. Never expose credentials or identifiers.
 
 ## Isolated-run prompt
 
@@ -25,6 +25,7 @@ status. Never expose credentials or identifiers.
 Use $ai-news-skills. Run the complete source-only daily workflow for today's Asia/Shanghai date.
 Stop on doctor errors. Summarize only available source_text, keep unavailable records exact,
 choose highlights without a fixed quota, validate the native cards, and call scheduled-group for
-the configured group. Never fetch transcripts, use S3, send a personal preview, or create an
-approval draft. Treat only structured sent or a matching skipped receipt as successful delivery.
+the configured group. Treat official vendor claims as attributed claims, not independent
+verification. Never fetch transcripts, use S3, send a personal preview, or create an approval
+draft. Treat only structured sent or a matching skipped receipt as successful delivery.
 ```

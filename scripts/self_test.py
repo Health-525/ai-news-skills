@@ -15,6 +15,14 @@ from daily_pipeline import _handle_scheduled_group
 from radar.approval import build_approval_card
 from radar.delivery import _parse_bridge_payload, send_group_cards, send_personal_cards
 from radar.digest import FrozenItem, build_card, build_cards, validate_frozen_digest
+from radar.models import ContentItem
+from radar.official_news import (
+    OfficialSource,
+    fetch_official_news,
+    load_official_sources,
+    parse_official_feed,
+)
+from radar.url_utils import canonical_url
 from radar.source_material import source_text_status
 from radar.sources import load_builders_x_accounts, parse_builders_x
 from radar.storage import Storage
@@ -29,6 +37,46 @@ def main() -> int:
     assert status == "available" and text and not reason
     status, text, reason = source_text_status("Subscribe now https://example.com")
     assert status == "unavailable" and not text and reason
+    assert reason == "来源未提供足够的可用简介"
+
+    official_sources = load_official_sources(
+        Path(__file__).resolve().parents[1] / "references" / "official-news-sources.json"
+    )
+    assert len(official_sources) == 8
+    assert canonical_url(
+        "https://www.example.com/news/model/?utm_source=test&ref=home"
+    ) == "https://example.com/news/model"
+    official_rss = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <item>
+    <title>Official Model One</title>
+    <description><![CDATA[<p>A detailed official model announcement with concrete capabilities.</p>]]></description>
+    <link>https://example.com/news/model-one</link>
+    <guid>model-one</guid>
+    <pubDate>Tue, 21 Jul 2026 06:00:00 GMT</pubDate>
+    <category>Product</category>
+  </item>
+  <item>
+    <title>Old Model</title>
+    <description>Outside the collection window.</description>
+    <link>https://example.com/news/old-model</link>
+    <guid>old-model</guid>
+    <pubDate>Sun, 19 Jul 2026 06:00:00 GMT</pubDate>
+  </item>
+</channel></rss>"""
+    parsed_official = parse_official_feed(
+        official_rss,
+        {
+            "name": "Example Lab",
+            "kind": "rss",
+            "url": "https://example.com/rss.xml",
+            "allowed_hosts": ["example.com"],
+        },
+        datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    assert len(parsed_official) == 1
+    assert parsed_official[0].source_type == "official_news"
+    assert parsed_official[0].raw_source_text.startswith("A detailed official")
 
     source = {
         "items": [
@@ -172,6 +220,26 @@ def main() -> int:
     assert "X 1" in x_card_text and "Builders X 动态" in x_card_text
     section_items = [
         FrozenItem(
+            item_id="official-highlight",
+            source_type="official_news",
+            source="官方发布 · Example Lab",
+            title="Official priority",
+            url="https://example.com/news/priority",
+            summary="Official priority summary",
+            recommendation="",
+            highlight=True,
+        ),
+        FrozenItem(
+            item_id="official-remaining",
+            source_type="official_news",
+            source="官方发布 · Example Lab",
+            title="Official remaining",
+            url="https://example.com/news/remaining",
+            summary="Official remaining summary",
+            recommendation="",
+            highlight=False,
+        ),
+        FrozenItem(
             item_id="x-highlight",
             source_type="builders_x",
             source="Builders X · Example",
@@ -246,7 +314,10 @@ def main() -> int:
         raise AssertionError(f"card marker not found: {marker}")
 
     assert (
-        element_position("**🎬 YouTube**")
+        element_position("**📡 官方发布**")
+        < element_position("Official priority")
+        < element_position("其余 1 条 官方动态")
+        < element_position("**🎬 YouTube**")
         < element_position("YouTube priority")
         < element_position("其余 1 条 YouTube 视频")
         < element_position("**🧭 AIHOT**")
@@ -269,17 +340,19 @@ def main() -> int:
             highlight=True,
         )
         for source_type, source, url in (
+            ("official_news", "官方发布 · Example", "https://example.com/news/split"),
             ("builders_x", "Builders X · Example", "https://x.com/example/status/3001"),
             ("aihot", "AIHOT · Example", "https://example.com/split-aihot"),
             ("youtube", "YouTube · Example", "https://www.youtube.com/watch?v=split"),
         )
     ]
     split_cards = build_cards("2026-07-20", split_items)
-    assert len(split_cards) == 3
+    assert len(split_cards) == 4
     split_text = [json.dumps(card, ensure_ascii=False) for card in split_cards]
-    assert "🎬 YouTube" in split_text[0]
-    assert "🧭 AIHOT" in split_text[1]
-    assert "💬 Builders X" in split_text[2]
+    assert "📡 官方发布" in split_text[0]
+    assert "🎬 YouTube" in split_text[1]
+    assert "🧭 AIHOT" in split_text[2]
+    assert "💬 Builders X" in split_text[3]
     try:
         parse_builders_x(
             {"generatedAt": "2026-07-18T00:00:00Z", "x": []},
@@ -365,6 +438,64 @@ def main() -> int:
 
         storage = Storage(Path(temporary))
         storage.initialize()
+        html_source: OfficialSource = {
+            "name": "Example Lab",
+            "kind": "html_index",
+            "index_url": "https://example.com/news",
+            "article_path_prefix": "/news/",
+            "excluded_path_prefixes": [],
+            "allowed_hosts": ["example.com"],
+            "max_candidates": 5,
+        }
+        html_index = (
+            '<a href="/news/model-two">Jul 21, 2026 Official Model Two '
+            "A concrete official model description.</a>"
+        ).encode()
+        html_article = b"""<html><head>
+          <meta property="og:title" content="Official Model Two">
+          <meta property="og:description" content="A concrete official model description with capabilities.">
+          <script type="application/ld+json">{"datePublished":"2026-07-21T08:00:00Z"}</script>
+        </head></html>"""
+
+        def fake_official_fetcher(url: str, _: Storage) -> tuple[bytes, bool]:
+            if url == "https://example.com/news":
+                return html_index, False
+            if url == "https://example.com/news/model-two":
+                return html_article, False
+            raise OSError("unavailable")
+
+        html_items, html_health = fetch_official_news(
+            [html_source],
+            datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
+            storage,
+            fake_official_fetcher,
+        )
+        assert len(html_items) == 1 and html_health.status == "ok"
+        assert html_items[0].title == "Official Model Two"
+        official_duplicate = ContentItem(
+            item_id="official-duplicate",
+            source_type="official_news",
+            source="官方发布 · Example",
+            title="Official duplicate",
+            published_at=datetime(2026, 7, 21, tzinfo=timezone.utc),
+            url="https://example.com/news/shared/",
+            raw_source_text="Official source text with enough concrete detail for summarization.",
+        )
+        aihot_duplicate = ContentItem(
+            item_id="aihot-duplicate",
+            source_type="aihot",
+            source="AIHOT · Example",
+            title="AIHOT duplicate",
+            published_at=datetime(2026, 7, 21, tzinfo=timezone.utc),
+            url="https://example.com/news/shared",
+            raw_source_text="Secondary source text for the same canonical announcement.",
+        )
+        storage.add_new_items_to_digest(
+            "2026-07-23", [official_duplicate, aihot_duplicate]
+        )
+        duplicate_items = storage.items_for_digest("2026-07-23")
+        assert len(duplicate_items) == 1
+        assert duplicate_items[0].source_type == "official_news"
         storage.add_new_items_to_digest("2026-07-21", x_items)
         storage.add_new_items_to_digest("2026-07-22", x_items)
         assert len(storage.items_for_digest("2026-07-21")) == 2
@@ -453,7 +584,7 @@ def main() -> int:
 
     diagnostics = doctor()
     assert diagnostics["status"] == "ok", json.dumps(diagnostics, ensure_ascii=False)
-    print(json.dumps({"status": "ok", "tests": 23}, ensure_ascii=False))
+    print(json.dumps({"status": "ok", "tests": 29}, ensure_ascii=False))
     return 0
 
 
