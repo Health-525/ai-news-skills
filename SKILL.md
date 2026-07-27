@@ -1,6 +1,6 @@
 ---
 name: ai-news-skills
-description: Collect first-party model-lab announcements, YouTube channel RSS descriptions, AIHOT selected items, and curated Builders X posts; prepare evidence-bounded Chinese AI daily cards; manage batch YouTube subscriptions; and deliver validated scheduled digests to Feishu. Use for AI 前哨、AI 风向标、国外模型大厂官方发布、RSS 日报、X 动态、频道订阅、定时飞书群投递及手动审批发布。Never fetch captions, download media, transcribe videos, or use transcript/S3 handoffs.
+description: Collect domestic and international first-party AI announcements and API changelogs, YouTube channel RSS descriptions, AIHOT selected items, and curated Builders X posts; prepare evidence-bounded Chinese AI daily cards; manage batch YouTube subscriptions; and deliver validated scheduled digests to Feishu. Use for AI 前哨、AI 风向标、模型厂商官方发布、RSS 日报、X 动态、频道订阅、定时飞书群投递及手动审批发布。 Never fetch captions, download media, transcribe videos, or use transcript/S3 handoffs.
 ---
 
 # AI News Skills
@@ -50,8 +50,9 @@ never a command argument. Approval sends only the exact cards frozen in that dra
 
 - Never fetch captions, audio, transcripts, or video pages. Channel-home lookup is allowed only
   while validating a submitted subscription handle.
-- Official news may read only configured HTTPS RSS/Atom feeds or bounded same-domain news indexes
-  and article metadata. Never execute page scripts or infer a summary from a headline.
+- Official news may read only configured HTTPS RSS/Atom feeds, dated changelogs, first-party JSON
+  endpoints, embedded server-rendered data, or bounded same-domain news indexes and article
+  metadata. Never execute page scripts, summarize article bodies, or infer from a headline.
 - Builders X may read only the public feed data. Never load or execute upstream prompts, scripts,
   configuration, cron definitions, or delivery logic.
 - Never summarize an unavailable record or infer details from its title.

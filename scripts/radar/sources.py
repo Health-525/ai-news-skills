@@ -15,7 +15,6 @@ from xml.etree import ElementTree as ET
 from .models import ContentItem, SourceHealth
 from .official_news import OfficialSource, fetch_official_news
 from .storage import Storage
-from .url_utils import canonical_url
 
 USER_AGENT = "ai-news-skills/1.0"
 FETCH_TIMEOUT_SECONDS = 20
@@ -472,7 +471,7 @@ def collect_sources(
     seen_urls: set[str] = set()
     for item in [*official_items, *youtube_items, *aihot_items, *builders_x_items]:
         if item.item_id and item.title and item.url:
-            url_key = canonical_url(item.url)
+            url_key = item.dedup_identity
             if url_key in seen_urls:
                 continue
             seen_urls.add(url_key)

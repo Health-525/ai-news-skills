@@ -2,10 +2,13 @@
 
 ## Inputs
 
-- Official news: first-party model-lab RSS/Atom feeds and bounded same-domain newsroom indexes from
-  `official-news-sources.json`. RSS descriptions or public article metadata provide the evidence;
-  scripts and article bodies are never executed or summarized. Each configured lab fails
-  independently, and page-structure changes surface in `source_health`.
+- Official news: the domestic and international first-party set in
+  `official-news-sources.json`. Supported adapters are RSS/Atom, dated API changelogs,
+  first-party JSON endpoints, embedded server-rendered indexes, and bounded same-domain newsroom
+  indexes. Evidence is limited to publisher-supplied descriptions, changelog entries, abstracts,
+  or public article metadata; scripts and article bodies are never executed or summarized.
+  Source-specific title/category filters remove broad corporate noise. Each configured endpoint
+  fails independently, and page-structure changes surface in `source_health`.
 - YouTube: public channel Atom feeds from the active external subscription database. The bundled
   `youtube-channels.json` seeds that database without overwriting owner-confirmed additions.
   Evidence comes from the publisher-provided `media:description` field.
@@ -16,17 +19,20 @@
   60 meaningful characters, recruiting or response-solicitation posts, posts without an
   AI/product/research signal, malformed canonical links, and posts outside the upstream snapshot.
   Source health reports the count rejected by each filter.
-- Window: official RSS, YouTube, and AIHOT use the 24 hours preceding collection time. Official
-  HTML pages that expose only a publication date use the intersecting calendar dates to avoid
-  dropping same-day releases due to unknown publisher timezone. Builders X uses the newest upstream
-  24-hour snapshot because that feed may refresh many hours before the 08:30 run. The feed itself
-  must still be no more than 36 hours old.
+- Window: official feeds, changelogs, first-party indexes, YouTube, and AIHOT use the 24 hours
+  preceding collection time. Official pages that expose only a publication date use the
+  intersecting calendar dates to avoid dropping same-day releases due to unknown publisher
+  timezone. A source with no trustworthy publication date produces no item; a mutable build-time
+  JSON date is not treated as publication evidence when disabled in source configuration.
+  Builders X uses the newest upstream 24-hour snapshot because that feed may refresh many hours
+  before the 08:30 run. The feed itself must still be no more than 36 hours old.
 
 The collector uses conditional requests when validators are available and can use a recent private
 cache during transient outages. Every fallback is visible in `source_health`; stale official RSS,
 YouTube, and AIHOT records outside the report window are excluded, and stale X snapshots fail
 closed. Canonical URLs are deduplicated across sources and across digest dates, with direct official
-records preferred over matching aggregator records discovered in the same run.
+records preferred over matching aggregator records discovered in the same run. Dated changelog
+entries use the canonical changelog URL plus entry date, so separate release days remain distinct.
 
 ## Output schema
 

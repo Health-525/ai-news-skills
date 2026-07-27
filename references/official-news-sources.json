@@ -57,5 +57,158 @@
     "excluded_path_prefixes": ["/blog/tag/", "/blog/authors/"],
     "allowed_hosts": ["cohere.com"],
     "max_candidates": 8
+  },
+  {
+    "name": "OpenAI API",
+    "kind": "html_changelog",
+    "url": "https://developers.openai.com/api/docs/changelog",
+    "allowed_hosts": ["developers.openai.com"]
+  },
+  {
+    "name": "Anthropic Platform",
+    "kind": "html_changelog",
+    "url": "https://platform.claude.com/docs/en/release-notes/overview",
+    "allowed_hosts": ["platform.claude.com"]
+  },
+  {
+    "name": "Gemini API",
+    "kind": "html_changelog",
+    "url": "https://ai.google.dev/gemini-api/docs/changelog",
+    "allowed_hosts": ["ai.google.dev"]
+  },
+  {
+    "name": "Mistral API",
+    "kind": "html_changelog",
+    "url": "https://docs.mistral.ai/resources/changelogs",
+    "allowed_hosts": ["docs.mistral.ai"]
+  },
+  {
+    "name": "Cohere API",
+    "kind": "html_changelog",
+    "url": "https://docs.cohere.com/v2/changelog",
+    "allowed_hosts": ["docs.cohere.com"]
+  },
+  {
+    "name": "DeepSeek API",
+    "kind": "html_changelog",
+    "url": "https://api-docs.deepseek.com/updates/",
+    "allowed_hosts": ["api-docs.deepseek.com"]
+  },
+  {
+    "name": "Qwen",
+    "kind": "qwen_api",
+    "url": "https://qwen.ai/api/v2/article/retrieval?type=qwen_ai&language=zh-CN",
+    "article_url_template": "https://qwen.ai/blog?id={slug}",
+    "allowed_hosts": ["qwen.ai"]
+  },
+  {
+    "name": "ByteDance Seed",
+    "kind": "seed_router",
+    "url": "https://seed.bytedance.com/blog",
+    "article_url_template": "https://seed.bytedance.com/zh/blog/{slug}",
+    "allowed_categories": ["Models"],
+    "allowed_hosts": ["seed.bytedance.com"]
+  },
+  {
+    "name": "智谱 GLM",
+    "kind": "rss",
+    "url": "https://docs.bigmodel.cn/cn/update/new-releases/rss.xml",
+    "allowed_hosts": ["docs.bigmodel.cn"]
+  },
+  {
+    "name": "Microsoft AI",
+    "kind": "rss",
+    "url": "https://news.microsoft.com/source/topics/ai/feed/",
+    "allowed_hosts": ["news.microsoft.com"],
+    "title_include_terms": ["model", "Azure AI", "Copilot", "agent", "Phi", "foundation"]
+  },
+  {
+    "name": "AWS AI",
+    "kind": "rss",
+    "url": "https://aws.amazon.com/blogs/machine-learning/feed/",
+    "allowed_hosts": ["aws.amazon.com"],
+    "title_include_terms": [
+      "introducing",
+      "announcing",
+      "available",
+      "availability",
+      "launch",
+      "model",
+      "Bedrock",
+      "Nova",
+      "Claude",
+      "Gemini",
+      "GPT",
+      "Grok",
+      "Mistral",
+      "Llama"
+    ],
+    "title_exclude_terms": [
+      "build ",
+      "building ",
+      "best practices",
+      "how to ",
+      "customer",
+      "recommendation",
+      "blueprint",
+      "evaluating "
+    ]
+  },
+  {
+    "name": "Stability AI",
+    "kind": "rss",
+    "url": "https://stability.ai/news-updates?format=rss",
+    "allowed_hosts": ["stability.ai"]
+  },
+  {
+    "name": "Ai2",
+    "kind": "html_index",
+    "index_url": "https://allenai.org/news",
+    "article_path_prefix": "/blog/",
+    "allowed_hosts": ["allenai.org"],
+    "max_candidates": 12
+  },
+  {
+    "name": "Runway",
+    "kind": "html_index",
+    "index_url": "https://runway.com/news",
+    "article_path_prefix": "/news/",
+    "excluded_path_prefixes": [
+      "/news/customers",
+      "/news/research",
+      "/news/company-news",
+      "/news/engineering"
+    ],
+    "allowed_hosts": ["runway.com"],
+    "title_include_terms": [
+      "introducing",
+      "announcing",
+      "model",
+      "agent",
+      "research",
+      "world",
+      "Aleph",
+      "Gen-",
+      "Runway Dev"
+    ],
+    "title_exclude_terms": ["office", "partnership", "customer"],
+    "max_candidates": 20
+  },
+  {
+    "name": "MiniMax",
+    "kind": "html_index",
+    "index_url": "https://www.minimax.io/news",
+    "article_path_prefix": "/news/",
+    "allowed_hosts": ["minimax.io"],
+    "allow_json_date": false,
+    "max_candidates": 12
+  },
+  {
+    "name": "Kimi",
+    "kind": "html_index",
+    "index_url": "https://www.kimi.com/blog/",
+    "article_path_prefix": "/blog/",
+    "allowed_hosts": ["kimi.com"],
+    "max_candidates": 12
   }
 ]

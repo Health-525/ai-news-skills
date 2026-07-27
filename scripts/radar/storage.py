@@ -13,7 +13,6 @@ from types import TracebackType
 from typing import Literal
 
 from .models import ContentItem
-from .url_utils import canonical_url
 
 
 class _ClosingConnection(sqlite3.Connection):
@@ -152,8 +151,22 @@ class Storage:
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as connection:
             existing_urls = {
-                canonical_url(str(row["url"])): str(row["item_key"])
-                for row in connection.execute("SELECT item_key, url FROM items").fetchall()
+                ContentItem(
+                    item_id=str(row["item_id"]),
+                    source_type=str(row["source_type"]),
+                    source=str(row["source"]),
+                    title=str(row["title"]),
+                    published_at=datetime.fromisoformat(str(row["published_at"])),
+                    url=str(row["url"]),
+                    extra=str(row["extra"]),
+                ).dedup_identity: str(row["item_key"])
+                for row in connection.execute(
+                    """
+                    SELECT item_key, item_id, source_type, source, title,
+                           published_at, url, extra
+                    FROM items
+                    """
+                ).fetchall()
             }
             position_row = connection.execute(
                 "SELECT COALESCE(MAX(position), 0) AS value FROM digest_items WHERE digest_date = ?",
@@ -161,7 +174,7 @@ class Storage:
             ).fetchone()
             position = int(position_row["value"])
             for item in items:
-                url_key = canonical_url(item.url)
+                url_key = item.dedup_identity
                 existing_item_key = existing_urls.get(url_key)
                 if existing_item_key is not None and existing_item_key != item.key:
                     continue
