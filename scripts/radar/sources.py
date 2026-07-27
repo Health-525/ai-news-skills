@@ -1,4 +1,4 @@
-"""Fetch YouTube, AIHOT, and the curated Builders X public feed."""
+"""Fetch YouTube, official news, AIHOT, and the curated Builders X public feed."""
 
 from __future__ import annotations
 
@@ -13,7 +13,9 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from .models import ContentItem, SourceHealth
+from .official_news import OfficialSource, fetch_official_news
 from .storage import Storage
+from .url_utils import canonical_url
 
 USER_AGENT = "ai-news-skills/1.0"
 FETCH_TIMEOUT_SECONDS = 20
@@ -117,6 +119,15 @@ def _cache_is_recent(cache: dict[str, object]) -> bool:
     return datetime.now(timezone.utc) - fetched <= timedelta(hours=CACHE_FALLBACK_HOURS)
 
 
+def _cached_body(cache: dict[str, object]) -> bytes:
+    body = cache.get("body")
+    if isinstance(body, bytes):
+        return body
+    if isinstance(body, (bytearray, memoryview)):
+        return bytes(body)
+    raise ValueError("cached response body is not binary")
+
+
 def _fetch_bytes(url: str, storage: Storage) -> tuple[bytes, bool]:
     cache = storage.get_http_cache(url)
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json, application/atom+xml, */*"}
@@ -138,13 +149,13 @@ def _fetch_bytes(url: str, storage: Storage) -> tuple[bytes, bool]:
             return body, False
     except urllib.error.HTTPError as error:
         if error.code == 304 and cache:
-            return bytes(cache["body"]), True
+            return _cached_body(cache), True
         if cache and _cache_is_recent(cache) and error.code in {408, 429, 500, 502, 503, 504}:
-            return bytes(cache["body"]), True
+            return _cached_body(cache), True
         raise
     except (OSError, TimeoutError, urllib.error.URLError):
         if cache and _cache_is_recent(cache):
-            return bytes(cache["body"]), True
+            return _cached_body(cache), True
         raise
 
 
@@ -283,8 +294,8 @@ def _clean_x_text(value: str) -> str:
 
 def _safe_count(value: object) -> int:
     try:
-        return max(0, int(value or 0))
-    except (TypeError, ValueError):
+        return max(0, int(str(value or 0)))
+    except ValueError:
         return 0
 
 
@@ -444,18 +455,27 @@ def fetch_builders_x(
 
 def collect_sources(
     channels: list[dict[str, str]],
+    official_sources: list[OfficialSource],
     builders_x_accounts: list[dict[str, str]],
     cutoff: datetime,
     storage: Storage,
 ) -> tuple[list[ContentItem], list[SourceHealth]]:
+    official_items, official_health = fetch_official_news(
+        official_sources, cutoff, storage, _fetch_bytes
+    )
     youtube_items, youtube_health = fetch_youtube(channels, cutoff, storage)
     aihot_items, aihot_health = fetch_aihot(cutoff, storage)
     builders_x_items, builders_x_health = fetch_builders_x(
         builders_x_accounts, cutoff, storage
     )
     unique: dict[str, ContentItem] = {}
-    for item in [*youtube_items, *aihot_items, *builders_x_items]:
+    seen_urls: set[str] = set()
+    for item in [*official_items, *youtube_items, *aihot_items, *builders_x_items]:
         if item.item_id and item.title and item.url:
+            url_key = canonical_url(item.url)
+            if url_key in seen_urls:
+                continue
+            seen_urls.add(url_key)
             unique[item.key] = item
     items = sorted(unique.values(), key=lambda item: item.published_at, reverse=True)
-    return items, [youtube_health, aihot_health, builders_x_health]
+    return items, [official_health, youtube_health, aihot_health, builders_x_health]

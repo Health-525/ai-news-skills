@@ -1,0 +1,61 @@
+[
+  {
+    "name": "OpenAI",
+    "kind": "rss",
+    "url": "https://openai.com/news/rss.xml",
+    "allowed_hosts": ["openai.com"]
+  },
+  {
+    "name": "Google DeepMind",
+    "kind": "rss",
+    "url": "https://deepmind.google/blog/rss.xml",
+    "allowed_hosts": ["deepmind.google"]
+  },
+  {
+    "name": "Google AI",
+    "kind": "rss",
+    "url": "https://blog.google/technology/ai/rss/",
+    "allowed_hosts": ["blog.google"]
+  },
+  {
+    "name": "Anthropic",
+    "kind": "html_index",
+    "index_url": "https://www.anthropic.com/news",
+    "article_path_prefix": "/news/",
+    "allowed_hosts": ["anthropic.com"],
+    "max_candidates": 12
+  },
+  {
+    "name": "Meta AI",
+    "kind": "html_index",
+    "index_url": "https://ai.meta.com/blog/",
+    "article_path_prefix": "/blog/",
+    "allowed_hosts": ["ai.meta.com"],
+    "max_candidates": 8
+  },
+  {
+    "name": "xAI",
+    "kind": "html_index",
+    "index_url": "https://x.ai/news",
+    "article_path_prefix": "/news/",
+    "allowed_hosts": ["x.ai"],
+    "max_candidates": 16
+  },
+  {
+    "name": "Mistral AI",
+    "kind": "html_index",
+    "index_url": "https://mistral.ai/news/",
+    "article_path_prefix": "/news/",
+    "allowed_hosts": ["mistral.ai"],
+    "max_candidates": 12
+  },
+  {
+    "name": "Cohere",
+    "kind": "html_index",
+    "index_url": "https://cohere.com/blog",
+    "article_path_prefix": "/blog/",
+    "excluded_path_prefixes": ["/blog/tag/", "/blog/authors/"],
+    "allowed_hosts": ["cohere.com"],
+    "max_candidates": 8
+  }
+]

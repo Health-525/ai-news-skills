@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 MAX_CARD_BYTES = 25_000
-SOURCE_ORDER = {"youtube": 0, "aihot": 1, "builders_x": 2}
+SOURCE_ORDER = {"official_news": 0, "youtube": 1, "aihot": 2, "builders_x": 3}
 ITEM_PATTERN = re.compile(
     r"^###\s+\d+\.\s+\[(?P<title>.+)]\((?P<url>https?://[^)]+)\)\s*$"
 )
@@ -240,22 +240,33 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
         parsed_date = datetime.strptime(date_str, "%Y-%m-%d")
     except ValueError as error:
         raise ValueError("date must be YYYY-MM-DD") from error
+    official_news = [item for item in items if item.source_type == "official_news"]
     youtube = [item for item in items if item.source_type == "youtube"]
     aihot = [item for item in items if item.source_type == "aihot"]
     builders_x = [item for item in items if item.source_type == "builders_x"]
-    if len(youtube) + len(aihot) + len(builders_x) != len(items):
+    if len(official_news) + len(youtube) + len(aihot) + len(builders_x) != len(items):
         raise ValueError("card contains an unsupported source type")
     highlights = [item for item in items if item.highlight]
     elements: list[dict] = [
         {
             "tag": "markdown",
             "content": (
-                f"**今日 {len(items)} 条新信号**　YouTube {len(youtube)} · "
+                f"**今日 {len(items)} 条新信号**　官方 {len(official_news)} · "
+                f"YouTube {len(youtube)} · "
                 f"AIHOT {len(aihot)} · X {len(builders_x)}\n"
                 f"<font color='grey'>模型判断 {len(highlights)} 条重点，其余按需展开</font>"
             ),
         }
     ]
+    elements.extend(
+        _source_section(
+            "官方发布",
+            "📡",
+            official_news,
+            "官方动态",
+            "official_news_more",
+        )
+    )
     elements.extend(
         _source_section(
             "YouTube",

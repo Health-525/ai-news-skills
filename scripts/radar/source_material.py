@@ -31,8 +31,8 @@ def source_text_status(value: str) -> tuple[str, str, str]:
     cleaned = clean_source_text(value)
     url_characters = sum(len(match.group(0)) for match in URL_RE.finditer(cleaned))
     if cleaned and url_characters / len(cleaned) > 0.35:
-        return "unavailable", "", "RSS 简介以链接或推广信息为主"
+        return "unavailable", "", "来源简介以链接或推广信息为主"
     meaningful = re.sub(r"[^\w\u4e00-\u9fff]", "", URL_RE.sub("", cleaned))
     if len(meaningful) < MIN_MEANINGFUL_CHARACTERS:
-        return "unavailable", "", "RSS 未提供足够的可用简介"
+        return "unavailable", "", "来源未提供足够的可用简介"
     return "available", cleaned, ""

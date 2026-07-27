@@ -9,14 +9,22 @@ import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import TracebackType
+from typing import Literal
 
 from .models import ContentItem
+from .url_utils import canonical_url
 
 
 class _ClosingConnection(sqlite3.Connection):
-    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> Literal[False]:
         try:
-            return bool(super().__exit__(exc_type, exc_value, traceback))
+            return super().__exit__(exc_type, exc_value, traceback)
         finally:
             self.close()
 
@@ -143,12 +151,20 @@ class Storage:
     def add_new_items_to_digest(self, date_str: str, items: list[ContentItem]) -> None:
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as connection:
+            existing_urls = {
+                canonical_url(str(row["url"])): str(row["item_key"])
+                for row in connection.execute("SELECT item_key, url FROM items").fetchall()
+            }
             position_row = connection.execute(
                 "SELECT COALESCE(MAX(position), 0) AS value FROM digest_items WHERE digest_date = ?",
                 (date_str,),
             ).fetchone()
             position = int(position_row["value"])
             for item in items:
+                url_key = canonical_url(item.url)
+                existing_item_key = existing_urls.get(url_key)
+                if existing_item_key is not None and existing_item_key != item.key:
+                    continue
                 cursor = connection.execute(
                     """
                     INSERT OR IGNORE INTO items (
@@ -182,6 +198,7 @@ class Storage:
                         "INSERT INTO digest_items (digest_date, item_key, position) VALUES (?, ?, ?)",
                         (date_str, item.key, position),
                     )
+                existing_urls[url_key] = item.key
 
     def items_for_digest(self, date_str: str) -> list[ContentItem]:
         with self._connect() as connection:
