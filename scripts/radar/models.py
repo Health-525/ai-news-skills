@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from .url_utils import canonical_url
+
 
 @dataclass(frozen=True, slots=True)
 class ContentItem:
@@ -21,6 +23,13 @@ class ContentItem:
     @property
     def key(self) -> str:
         return f"{self.source_type}:{self.item_id}"
+
+    @property
+    def dedup_identity(self) -> str:
+        normalized = canonical_url(self.url)
+        if self.extra == "官方 Changelog":
+            return f"{normalized}#date={self.published_at.date().isoformat()}"
+        return normalized
 
 
 @dataclass(frozen=True, slots=True)

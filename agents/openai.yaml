@@ -1,4 +1,4 @@
 interface:
   display_name: "AI News Skills"
-  short_description: "聚合官方模型发布、YouTube、AIHOT 与 X 的 AI 日报"
+  short_description: "聚合国内外官方 AI 发布、YouTube、AIHOT 与 X"
   default_prompt: "Use $ai-news-skills to prepare and validate today's source-only AI news digest."

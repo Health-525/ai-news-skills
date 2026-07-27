@@ -25,7 +25,8 @@ group delivery status. Never expose credentials or identifiers.
 Use $ai-news-skills. Run the complete source-only daily workflow for today's Asia/Shanghai date.
 Stop on doctor errors. Summarize only available source_text, keep unavailable records exact,
 choose highlights without a fixed quota, validate the native cards, and call scheduled-group for
-the configured group. Treat official vendor claims as attributed claims, not independent
-verification. Never fetch transcripts, use S3, send a personal preview, or create an approval
-draft. Treat only structured sent or a matching skipped receipt as successful delivery.
+the configured group. Treat domestic and international official releases and API changelogs as
+attributed vendor claims, not independent verification. Never fetch transcripts, use S3, send a
+personal preview, or create an approval draft. Treat only structured sent or a matching skipped
+receipt as successful delivery.
 ```

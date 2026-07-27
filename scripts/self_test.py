@@ -20,7 +20,10 @@ from radar.official_news import (
     OfficialSource,
     fetch_official_news,
     load_official_sources,
+    parse_official_changelog,
     parse_official_feed,
+    parse_qwen_api,
+    parse_seed_router,
 )
 from radar.url_utils import canonical_url
 from radar.source_material import source_text_status
@@ -42,7 +45,7 @@ def main() -> int:
     official_sources = load_official_sources(
         Path(__file__).resolve().parents[1] / "references" / "official-news-sources.json"
     )
-    assert len(official_sources) == 8
+    assert len(official_sources) == 24
     assert canonical_url(
         "https://www.example.com/news/model/?utm_source=test&ref=home"
     ) == "https://example.com/news/model"
@@ -63,6 +66,13 @@ def main() -> int:
     <guid>old-model</guid>
     <pubDate>Sun, 19 Jul 2026 06:00:00 GMT</pubDate>
   </item>
+  <item>
+    <title>Customer tutorial</title>
+    <description>A detailed but intentionally excluded customer tutorial.</description>
+    <link>https://example.com/news/customer-tutorial</link>
+    <guid>customer-tutorial</guid>
+    <pubDate>Tue, 21 Jul 2026 07:00:00 GMT</pubDate>
+  </item>
 </channel></rss>"""
     parsed_official = parse_official_feed(
         official_rss,
@@ -71,12 +81,104 @@ def main() -> int:
             "kind": "rss",
             "url": "https://example.com/rss.xml",
             "allowed_hosts": ["example.com"],
+            "title_exclude_terms": ["customer"],
         },
         datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
     )
     assert len(parsed_official) == 1
     assert parsed_official[0].source_type == "official_news"
     assert parsed_official[0].raw_source_text.startswith("A detailed official")
+    changelog_items = parse_official_changelog(
+        b"""<html><body>
+          <h2>July 21, 2026</h2>
+          <p>Released a production model with a new stable API identifier.</p>
+          <ul><li>Added structured tool calling and a documented migration path.</li></ul>
+          <h2>July 19, 2026</h2><p>Old release outside the window.</p>
+        </body></html>""",
+        {
+            "name": "Example API",
+            "kind": "html_changelog",
+            "url": "https://example.com/changelog",
+            "allowed_hosts": ["example.com"],
+        },
+        datetime(2026, 7, 21, 0, 0, tzinfo=timezone.utc),
+    )
+    assert len(changelog_items) == 1
+    assert changelog_items[0].extra == "官方 Changelog"
+    assert "structured tool calling" in changelog_items[0].raw_source_text
+
+    qwen_items = parse_qwen_api(
+        json.dumps(
+            {
+                "data": {
+                    "articles": [
+                        {
+                            "id": "article-one",
+                            "title": "Qwen Model One",
+                            "path": "qwen-model-one",
+                            "extra": {
+                                "date": "2026-07-21T08:00:00+08:00",
+                                "introduction": "<p>A concrete official Qwen model introduction.</p>",
+                            },
+                        }
+                    ]
+                }
+            }
+        ).encode(),
+        {
+            "name": "Qwen",
+            "kind": "qwen_api",
+            "url": "https://qwen.ai/api/articles",
+            "article_url_template": "https://qwen.ai/blog?id={slug}",
+            "allowed_hosts": ["qwen.ai"],
+        },
+        datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    assert len(qwen_items) == 1
+    assert qwen_items[0].url.endswith("id=qwen-model-one")
+
+    seed_payload = {
+        "loaderData": {
+            "(locale$)/blog/page": {
+                "article_list": [
+                    {
+                        "ArticleMeta": {
+                            "PublishDate": int(
+                                datetime(
+                                    2026, 7, 21, 8, 0, tzinfo=timezone.utc
+                                ).timestamp()
+                                * 1000
+                            ),
+                            "ResearchArea": [{"ResearchAreaName": "Models"}],
+                        },
+                        "ArticleSubContentZh": {
+                            "Title": "Seed 模型发布",
+                            "TitleKey": "seed-model-release",
+                            "Abstract": "一项包含明确能力说明的官方模型发布。",
+                        },
+                    }
+                ]
+            }
+        }
+    }
+    seed_items = parse_seed_router(
+        (
+            "<script>window._ROUTER_DATA = "
+            + json.dumps(seed_payload, ensure_ascii=False)
+            + "</script>"
+        ).encode(),
+        {
+            "name": "ByteDance Seed",
+            "kind": "seed_router",
+            "url": "https://seed.bytedance.com/blog",
+            "article_url_template": "https://seed.bytedance.com/zh/blog/{slug}",
+            "allowed_categories": ["Models"],
+            "allowed_hosts": ["seed.bytedance.com"],
+        },
+        datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    assert len(seed_items) == 1
+    assert seed_items[0].title == "Seed 模型发布"
 
     source = {
         "items": [
@@ -456,10 +558,16 @@ def main() -> int:
           <meta property="og:description" content="A concrete official model description with capabilities.">
           <script type="application/ld+json">{"datePublished":"2026-07-21T08:00:00Z"}</script>
         </head></html>"""
+        dynamic_date_index = (
+            '<a href="/news/model-two">Official Model Two '
+            "A concrete official model description.</a>"
+        ).encode()
 
         def fake_official_fetcher(url: str, _: Storage) -> tuple[bytes, bool]:
             if url == "https://example.com/news":
                 return html_index, False
+            if url == "https://example.com/dynamic-news":
+                return dynamic_date_index, False
             if url == "https://example.com/news/model-two":
                 return html_article, False
             raise OSError("unavailable")
@@ -472,6 +580,19 @@ def main() -> int:
         )
         assert len(html_items) == 1 and html_health.status == "ok"
         assert html_items[0].title == "Official Model Two"
+        unsafe_date_source: OfficialSource = {
+            **html_source,
+            "name": "Dynamic Date Lab",
+            "index_url": "https://example.com/dynamic-news",
+            "allow_json_date": False,
+        }
+        unsafe_date_items, unsafe_date_health = fetch_official_news(
+            [unsafe_date_source],
+            datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
+            storage,
+            fake_official_fetcher,
+        )
+        assert not unsafe_date_items and unsafe_date_health.status == "ok"
         official_duplicate = ContentItem(
             item_id="official-duplicate",
             source_type="official_news",
@@ -496,6 +617,30 @@ def main() -> int:
         duplicate_items = storage.items_for_digest("2026-07-23")
         assert len(duplicate_items) == 1
         assert duplicate_items[0].source_type == "official_news"
+        changelog_day_one = ContentItem(
+            item_id="changelog-one",
+            source_type="official_news",
+            source="官方发布 · Example API",
+            title="Example API · 2026-07-21 更新",
+            published_at=datetime(2026, 7, 21, tzinfo=timezone.utc),
+            url="https://example.com/changelog",
+            raw_source_text="First dated changelog entry with sufficient source detail.",
+            extra="官方 Changelog",
+        )
+        changelog_day_two = ContentItem(
+            item_id="changelog-two",
+            source_type="official_news",
+            source="官方发布 · Example API",
+            title="Example API · 2026-07-22 更新",
+            published_at=datetime(2026, 7, 22, tzinfo=timezone.utc),
+            url="https://example.com/changelog",
+            raw_source_text="Second dated changelog entry with sufficient source detail.",
+            extra="官方 Changelog",
+        )
+        storage.add_new_items_to_digest(
+            "2026-07-24", [changelog_day_one, changelog_day_two]
+        )
+        assert len(storage.items_for_digest("2026-07-24")) == 2
         storage.add_new_items_to_digest("2026-07-21", x_items)
         storage.add_new_items_to_digest("2026-07-22", x_items)
         assert len(storage.items_for_digest("2026-07-21")) == 2
@@ -584,7 +729,7 @@ def main() -> int:
 
     diagnostics = doctor()
     assert diagnostics["status"] == "ok", json.dumps(diagnostics, ensure_ascii=False)
-    print(json.dumps({"status": "ok", "tests": 29}, ensure_ascii=False))
+    print(json.dumps({"status": "ok", "tests": 35}, ensure_ascii=False))
     return 0
 
 
