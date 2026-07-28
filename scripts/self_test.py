@@ -27,7 +27,11 @@ from radar.official_news import (
 )
 from radar.url_utils import canonical_url
 from radar.source_material import source_text_status
-from radar.sources import load_builders_x_accounts, parse_builders_x
+from radar.sources import (
+    fetch_industry_digests,
+    load_builders_x_accounts,
+    parse_builders_x,
+)
 from radar.storage import Storage
 from radar.subscriptions import build_subscription_result_card, validate_batch
 from radar.workflow import artifact_paths, doctor, scheduled_group_delivery_enabled
@@ -46,6 +50,13 @@ def main() -> int:
         Path(__file__).resolve().parents[1] / "references" / "official-news-sources.json"
     )
     assert len(official_sources) == 24
+    industry_sources = load_official_sources(
+        Path(__file__).resolve().parents[1]
+        / "references"
+        / "industry-digest-sources.json"
+    )
+    assert len(industry_sources) == 1
+    assert industry_sources[0]["name"] == "DeepLearning.AI · The Batch"
     assert canonical_url(
         "https://www.example.com/news/model/?utm_source=test&ref=home"
     ) == "https://example.com/news/model"
@@ -88,6 +99,36 @@ def main() -> int:
     assert len(parsed_official) == 1
     assert parsed_official[0].source_type == "official_news"
     assert parsed_official[0].raw_source_text.startswith("A detailed official")
+    industry_rss = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><item>
+  <title>The Batch weekly issue</title>
+  <description><![CDATA[An editorial overview of current AI developments with attributed analysis.]]></description>
+  <content:encoded xmlns:content="http://purl.org/rss/1.0/modules/content/"><![CDATA[
+    Full article body that must never become industry-digest evidence.
+  ]]></content:encoded>
+  <link>https://charonhub.deeplearning.ai/issue-test/</link>
+  <guid>issue-test</guid>
+  <pubDate>Tue, 21 Jul 2026 14:00:00 GMT</pubDate>
+</item></channel></rss>"""
+    with tempfile.TemporaryDirectory() as temporary:
+        industry_storage = Storage(Path(temporary))
+        industry_storage.initialize()
+
+        def fake_industry_fetcher(_: str, __: Storage) -> tuple[bytes, bool]:
+            return industry_rss, False
+
+        industry_items, industry_health = fetch_industry_digests(
+            industry_sources,
+            datetime(2026, 7, 21, 0, 0, tzinfo=timezone.utc),
+            industry_storage,
+            fake_industry_fetcher,
+        )
+    assert len(industry_items) == 1 and industry_health.status == "ok"
+    assert industry_health.source == "industry_digest"
+    assert industry_items[0].source_type == "industry_digest"
+    assert industry_items[0].source.startswith("行业精选 · ")
+    assert industry_items[0].extra.startswith("编辑 RSS")
+    assert "Full article body" not in industry_items[0].raw_source_text
     changelog_items = parse_official_changelog(
         b"""<html><body>
           <h2>July 21, 2026</h2>
@@ -401,6 +442,26 @@ def main() -> int:
             recommendation="",
             highlight=False,
         ),
+        FrozenItem(
+            item_id="industry-highlight",
+            source_type="industry_digest",
+            source="行业精选 · DeepLearning.AI · The Batch",
+            title="Industry digest priority",
+            url="https://charonhub.deeplearning.ai/issue-priority/",
+            summary="Industry digest priority summary",
+            recommendation="",
+            highlight=True,
+        ),
+        FrozenItem(
+            item_id="industry-remaining",
+            source_type="industry_digest",
+            source="行业精选 · DeepLearning.AI · The Batch",
+            title="Industry digest remaining",
+            url="https://charonhub.deeplearning.ai/issue-remaining/",
+            summary="Industry digest remaining summary",
+            recommendation="",
+            highlight=False,
+        ),
     ]
     section_card = build_card("2026-07-20", section_items)
     section_elements = section_card["body"]["elements"]
@@ -425,6 +486,9 @@ def main() -> int:
         < element_position("**🧭 AIHOT**")
         < element_position("AIHOT priority")
         < element_position("其余 1 条 AIHOT 动态")
+        < element_position("**📰 行业精选**")
+        < element_position("Industry digest priority")
+        < element_position("其余 1 条 行业周报")
         < element_position("**💬 Builders X**")
         < element_position("X priority")
         < element_position("其余 1 条 Builders X 动态")
@@ -446,15 +510,21 @@ def main() -> int:
             ("builders_x", "Builders X · Example", "https://x.com/example/status/3001"),
             ("aihot", "AIHOT · Example", "https://example.com/split-aihot"),
             ("youtube", "YouTube · Example", "https://www.youtube.com/watch?v=split"),
+            (
+                "industry_digest",
+                "行业精选 · DeepLearning.AI · The Batch",
+                "https://charonhub.deeplearning.ai/issue-split/",
+            ),
         )
     ]
     split_cards = build_cards("2026-07-20", split_items)
-    assert len(split_cards) == 4
+    assert len(split_cards) == 5
     split_text = [json.dumps(card, ensure_ascii=False) for card in split_cards]
     assert "📡 官方发布" in split_text[0]
     assert "🎬 YouTube" in split_text[1]
     assert "🧭 AIHOT" in split_text[2]
-    assert "💬 Builders X" in split_text[3]
+    assert "📰 行业精选" in split_text[3]
+    assert "💬 Builders X" in split_text[4]
     try:
         parse_builders_x(
             {"generatedAt": "2026-07-18T00:00:00Z", "x": []},
@@ -729,7 +799,7 @@ def main() -> int:
 
     diagnostics = doctor()
     assert diagnostics["status"] == "ok", json.dumps(diagnostics, ensure_ascii=False)
-    print(json.dumps({"status": "ok", "tests": 35}, ensure_ascii=False))
+    print(json.dumps({"status": "ok", "tests": 39}, ensure_ascii=False))
     return 0
 
 

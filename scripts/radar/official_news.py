@@ -59,6 +59,7 @@ class OfficialSource(TypedDict):
     title_include_terms: NotRequired[list[str]]
     title_exclude_terms: NotRequired[list[str]]
     allow_json_date: NotRequired[bool]
+    allow_content_fallback: NotRequired[bool]
 
 
 class _TextExtractor(HTMLParser):
@@ -278,6 +279,13 @@ def load_official_sources(path: Path) -> list[OfficialSource]:
             raise ValueError(f"official source {index} has invalid allow_json_date")
         if not allow_json_date:
             normalized["allow_json_date"] = False
+        allow_content_fallback = entry.get("allow_content_fallback", True)
+        if not isinstance(allow_content_fallback, bool):
+            raise ValueError(
+                f"official source {index} has invalid allow_content_fallback"
+            )
+        if not allow_content_fallback:
+            normalized["allow_content_fallback"] = False
 
         if kind in {"rss", "html_changelog", "qwen_api", "seed_router"}:
             url = _validate_https_url(entry.get("url"), f"official source {index} url")
@@ -451,7 +459,9 @@ def parse_official_feed(
     for entry in entries:
         title = _child_text(entry, "title")
         published_text = _child_text(entry, "pubDate", "published", "updated", "date")
-        description = _child_text(entry, "description", "summary", "content", "encoded")
+        description = _child_text(entry, "description", "summary")
+        if not description and source.get("allow_content_fallback", True):
+            description = _child_text(entry, "content", "encoded")
         guid = _child_text(entry, "guid", "id")
         category = _child_text(entry, "category")
         link = _child_text(entry, "link")
