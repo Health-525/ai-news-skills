@@ -1,0 +1,9 @@
+[
+  {
+    "name": "DeepLearning.AI · The Batch",
+    "kind": "rss",
+    "url": "https://charonhub.deeplearning.ai/tag/the-batch/rss/",
+    "allowed_hosts": ["charonhub.deeplearning.ai"],
+    "allow_content_fallback": false
+  }
+]

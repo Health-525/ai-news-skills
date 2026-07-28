@@ -16,8 +16,8 @@ needed only for evidence-bounded Chinese summaries and highlight selection.
 7. Stop. Do not call `preview` or `approve` from the cron run.
 
 Success requires structured `sent` or a matching `skipped` receipt. Report total, official news,
-YouTube, AIHOT, Builders X, available, unavailable, highlights, source failures, card count, and
-group delivery status. Never expose credentials or identifiers.
+YouTube, AIHOT, industry digest, Builders X, available, unavailable, highlights, source failures,
+card count, and group delivery status. Never expose credentials or identifiers.
 
 ## Isolated-run prompt
 
@@ -26,7 +26,7 @@ Use $ai-news-skills. Run the complete source-only daily workflow for today's Asi
 Stop on doctor errors. Summarize only available source_text, keep unavailable records exact,
 choose highlights without a fixed quota, validate the native cards, and call scheduled-group for
 the configured group. Treat domestic and international official releases and API changelogs as
-attributed vendor claims, not independent verification. Never fetch transcripts, use S3, send a
-personal preview, or create an approval draft. Treat only structured sent or a matching skipped
-receipt as successful delivery.
+attributed vendor claims, not independent verification. Treat industry digests as attributed
+editorial synthesis. Never fetch transcripts, use S3, send a personal preview, or create an
+approval draft. Treat only structured sent or a matching skipped receipt as successful delivery.
 ```

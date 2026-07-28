@@ -9,6 +9,10 @@
   or public article metadata; scripts and article bodies are never executed or summarized.
   Source-specific title/category filters remove broad corporate noise. Each configured endpoint
   fails independently, and page-structure changes surface in `source_health`.
+- Industry digests: publisher-owned editorial feeds from `industry-digest-sources.json`.
+  DeepLearning.AI's The Batch is collected from its official Ghost RSS as one weekly issue.
+  Evidence comes only from the RSS description; `content:encoded` and article bodies are ignored.
+  These records are labeled editorial synthesis, not first-party model announcements.
 - YouTube: public channel Atom feeds from the active external subscription database. The bundled
   `youtube-channels.json` seeds that database without overwriting owner-confirmed additions.
   Evidence comes from the publisher-provided `media:description` field.
@@ -19,8 +23,8 @@
   60 meaningful characters, recruiting or response-solicitation posts, posts without an
   AI/product/research signal, malformed canonical links, and posts outside the upstream snapshot.
   Source health reports the count rejected by each filter.
-- Window: official feeds, changelogs, first-party indexes, YouTube, and AIHOT use the 24 hours
-  preceding collection time. Official pages that expose only a publication date use the
+- Window: official feeds, changelogs, first-party indexes, industry digests, YouTube, and AIHOT use
+  the 24 hours preceding collection time. Official pages that expose only a publication date use the
   intersecting calendar dates to avoid dropping same-day releases due to unknown publisher
   timezone. A source with no trustworthy publication date produces no item; a mutable build-time
   JSON date is not treated as publication evidence when disabled in source configuration.
@@ -29,7 +33,7 @@
 
 The collector uses conditional requests when validators are available and can use a recent private
 cache during transient outages. Every fallback is visible in `source_health`; stale official RSS,
-YouTube, and AIHOT records outside the report window are excluded, and stale X snapshots fail
+industry digest, YouTube, and AIHOT records outside the report window are excluded, and stale X snapshots fail
 closed. Canonical URLs are deduplicated across sources and across digest dates, with direct official
 records preferred over matching aggregator records discovered in the same run. Dated changelog
 entries use the canonical changelog URL plus entry date, so separate release days remain distinct.
@@ -59,6 +63,7 @@ Optional environment variables:
 
 - `AI_NEWS_YOUTUBE_CHANNELS_FILE`: external channel-list override.
 - `AI_NEWS_OFFICIAL_SOURCES_FILE`: external official-source-list override.
+- `AI_NEWS_INDUSTRY_DIGEST_SOURCES_FILE`: external editorial-feed-list override.
 - `AI_NEWS_FEISHU_PERSONAL_TARGET`: private owner preview target.
 - `AI_NEWS_FEISHU_GROUP_TARGET`: configured group target.
 - `AI_NEWS_AUTO_GROUP_DELIVERY`: explicit opt-in for approval-free scheduled group delivery;

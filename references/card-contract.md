@@ -6,8 +6,8 @@ or invented records.
 
 The maintained Feishu card displays:
 
-- total, official news, YouTube, AIHOT, Builders X, and model-selected highlight counts;
-- source sections ordered as official news, YouTube, AIHOT, then Builders X;
+- total, official news, YouTube, AIHOT, industry digest, Builders X, and model-selected highlight counts;
+- source sections ordered as official news, YouTube, AIHOT, industry digest, then Builders X;
 - model-selected highlights expanded first inside each source section;
 - remaining records collapsed immediately after their source highlights;
 - `来源摘要` and an optional source-provided recommendation;

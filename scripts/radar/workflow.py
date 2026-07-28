@@ -21,6 +21,7 @@ RUNTIME_ENV_KEYS = {
     "AI_NEWS_AUTO_GROUP_DELIVERY",
     "AI_NEWS_FEISHU_PERSONAL_TARGET",
     "AI_NEWS_FEISHU_GROUP_TARGET",
+    "AI_NEWS_INDUSTRY_DIGEST_SOURCES_FILE",
     "AI_NEWS_OFFICIAL_SOURCES_FILE",
     "AI_NEWS_OWNER_ID",
     "OPENCLAW_FEISHU_ACCOUNT_ID",
@@ -80,6 +81,15 @@ def official_news_sources_file() -> Path:
     )
 
 
+def industry_digest_sources_file() -> Path:
+    configured = os.environ.get("AI_NEWS_INDUSTRY_DIGEST_SOURCES_FILE", "").strip()
+    return (
+        Path(configured).expanduser()
+        if configured
+        else skill_root() / "references" / "industry-digest-sources.json"
+    )
+
+
 def artifact_paths(date_str: str) -> dict[str, Path]:
     root = state_dir()
     reports = root / "reports"
@@ -133,6 +143,17 @@ def doctor() -> dict[str, object]:
         add("official-news-sources", "error", str(error))
     else:
         add("official-news-sources", "ok", f"{len(official_sources)} valid official sources")
+    try:
+        industry_sources = load_official_sources(industry_digest_sources_file())
+    except ValueError as error:
+        add("industry-digest-sources", "error", str(error))
+    else:
+        feed_label = "feed" if len(industry_sources) == 1 else "feeds"
+        add(
+            "industry-digest-sources",
+            "ok",
+            f"{len(industry_sources)} valid editorial {feed_label}",
+        )
     existing = _nearest_existing(state_dir())
     writable = existing.is_dir() and os.access(existing, os.W_OK)
     add(
@@ -192,11 +213,17 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
             storage.seed_subscriptions(load_channels(channels_file()))
             channels = storage.active_channels()
             official_sources = load_official_sources(official_news_sources_file())
+            industry_sources = load_official_sources(industry_digest_sources_file())
             builders_x_accounts = load_builders_x_accounts(builders_x_accounts_file())
             now = datetime.now(timezone.utc)
             cutoff = now - timedelta(hours=24)
             items, health = collect_sources(
-                channels, official_sources, builders_x_accounts, cutoff, storage
+                channels,
+                official_sources,
+                industry_sources,
+                builders_x_accounts,
+                cutoff,
+                storage,
             )
             if all(entry.status == "error" for entry in health):
                 return 1, {
@@ -241,6 +268,9 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
     official_news = sum(record["source_type"] == "official_news" for record in records)
     youtube = sum(record["source_type"] == "youtube" for record in records)
     aihot = sum(record["source_type"] == "aihot" for record in records)
+    industry_digest = sum(
+        record["source_type"] == "industry_digest" for record in records
+    )
     builders_x = sum(record["source_type"] == "builders_x" for record in records)
     result_status = "prepared_with_warnings" if any(entry.status != "ok" for entry in health) else "prepared"
     return 0, {
@@ -250,6 +280,7 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
         "official_news": official_news,
         "youtube": youtube,
         "aihot": aihot,
+        "industry_digest": industry_digest,
         "builders_x": builders_x,
         "available": available,
         "unavailable": len(records) - available,

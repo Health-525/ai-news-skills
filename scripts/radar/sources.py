@@ -1,4 +1,4 @@
-"""Fetch YouTube, official news, AIHOT, and the curated Builders X public feed."""
+"""Fetch official news, editorial digests, YouTube, AIHOT, and Builders X."""
 
 from __future__ import annotations
 
@@ -8,8 +8,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
 from xml.etree import ElementTree as ET
 
 from .models import ContentItem, SourceHealth
@@ -286,6 +288,32 @@ def fetch_aihot(cutoff: datetime, storage: Storage) -> tuple[list[ContentItem], 
     return items, SourceHealth("aihot", "ok", 1, 0, int(cached), "official selected-items API")
 
 
+def fetch_industry_digests(
+    sources: list[OfficialSource],
+    cutoff: datetime,
+    storage: Storage,
+    fetcher: Callable[[str, Storage], tuple[bytes, bool]] = _fetch_bytes,
+) -> tuple[list[ContentItem], SourceHealth]:
+    items, health = fetch_official_news(sources, cutoff, storage, fetcher)
+    adapted = [
+        replace(
+            item,
+            source_type="industry_digest",
+            source=f"行业精选 · {item.source.split('·', 1)[-1].strip()}",
+            extra=item.extra.replace("官方 RSS", "编辑 RSS"),
+        )
+        for item in items
+    ]
+    return adapted, replace(
+        health,
+        source="industry_digest",
+        detail=health.detail.replace(
+            "configured sources",
+            "configured editorial feeds",
+        ),
+    )
+
+
 def _clean_x_text(value: str) -> str:
     without_urls = URL_RE.sub("", value)
     return re.sub(r"\s+", " ", without_urls).strip()
@@ -455,6 +483,7 @@ def fetch_builders_x(
 def collect_sources(
     channels: list[dict[str, str]],
     official_sources: list[OfficialSource],
+    industry_digest_sources: list[OfficialSource],
     builders_x_accounts: list[dict[str, str]],
     cutoff: datetime,
     storage: Storage,
@@ -464,12 +493,21 @@ def collect_sources(
     )
     youtube_items, youtube_health = fetch_youtube(channels, cutoff, storage)
     aihot_items, aihot_health = fetch_aihot(cutoff, storage)
+    industry_digest_items, industry_digest_health = fetch_industry_digests(
+        industry_digest_sources, cutoff, storage
+    )
     builders_x_items, builders_x_health = fetch_builders_x(
         builders_x_accounts, cutoff, storage
     )
     unique: dict[str, ContentItem] = {}
     seen_urls: set[str] = set()
-    for item in [*official_items, *youtube_items, *aihot_items, *builders_x_items]:
+    for item in [
+        *official_items,
+        *youtube_items,
+        *aihot_items,
+        *industry_digest_items,
+        *builders_x_items,
+    ]:
         if item.item_id and item.title and item.url:
             url_key = item.dedup_identity
             if url_key in seen_urls:
@@ -477,4 +515,10 @@ def collect_sources(
             seen_urls.add(url_key)
             unique[item.key] = item
     items = sorted(unique.values(), key=lambda item: item.published_at, reverse=True)
-    return items, [official_health, youtube_health, aihot_health, builders_x_health]
+    return items, [
+        official_health,
+        youtube_health,
+        aihot_health,
+        industry_digest_health,
+        builders_x_health,
+    ]

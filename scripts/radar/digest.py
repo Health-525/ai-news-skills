@@ -8,7 +8,13 @@ from dataclasses import dataclass
 from datetime import datetime
 
 MAX_CARD_BYTES = 25_000
-SOURCE_ORDER = {"official_news": 0, "youtube": 1, "aihot": 2, "builders_x": 3}
+SOURCE_ORDER = {
+    "official_news": 0,
+    "youtube": 1,
+    "aihot": 2,
+    "industry_digest": 3,
+    "builders_x": 4,
+}
 ITEM_PATTERN = re.compile(
     r"^###\s+\d+\.\s+\[(?P<title>.+)]\((?P<url>https?://[^)]+)\)\s*$"
 )
@@ -243,8 +249,18 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
     official_news = [item for item in items if item.source_type == "official_news"]
     youtube = [item for item in items if item.source_type == "youtube"]
     aihot = [item for item in items if item.source_type == "aihot"]
+    industry_digest = [
+        item for item in items if item.source_type == "industry_digest"
+    ]
     builders_x = [item for item in items if item.source_type == "builders_x"]
-    if len(official_news) + len(youtube) + len(aihot) + len(builders_x) != len(items):
+    if (
+        len(official_news)
+        + len(youtube)
+        + len(aihot)
+        + len(industry_digest)
+        + len(builders_x)
+        != len(items)
+    ):
         raise ValueError("card contains an unsupported source type")
     highlights = [item for item in items if item.highlight]
     elements: list[dict] = [
@@ -253,7 +269,8 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
             "content": (
                 f"**今日 {len(items)} 条新信号**　官方 {len(official_news)} · "
                 f"YouTube {len(youtube)} · "
-                f"AIHOT {len(aihot)} · X {len(builders_x)}\n"
+                f"AIHOT {len(aihot)} · 行业精选 {len(industry_digest)} · "
+                f"X {len(builders_x)}\n"
                 f"<font color='grey'>模型判断 {len(highlights)} 条重点，其余按需展开</font>"
             ),
         }
@@ -283,6 +300,15 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
             aihot,
             "AIHOT 动态",
             "aihot_more",
+        )
+    )
+    elements.extend(
+        _source_section(
+            "行业精选",
+            "📰",
+            industry_digest,
+            "行业周报",
+            "industry_digest_more",
         )
     )
     elements.extend(
