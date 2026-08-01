@@ -110,6 +110,32 @@
     "allowed_hosts": ["seed.bytedance.com"]
   },
   {
+    "name": "火山引擎",
+    "kind": "volcengine_router",
+    "url": "https://www.volcengine.com/news",
+    "article_url_template": "https://www.volcengine.com/news/detail/{id}",
+    "allowed_categories": ["machinelearning", "机器学习"],
+    "allowed_hosts": ["volcengine.com"]
+  },
+  {
+    "name": "百度千帆",
+    "kind": "html_changelog",
+    "url": "https://cloud.baidu.com/doc/qianfan/s/Mmh8l4qwj",
+    "allowed_hosts": ["cloud.baidu.com"]
+  },
+  {
+    "name": "腾讯混元",
+    "kind": "html_changelog",
+    "url": "https://cloud.tencent.com/document/product/1729/97765",
+    "allowed_hosts": ["cloud.tencent.com"]
+  },
+  {
+    "name": "阿里云百炼",
+    "kind": "html_changelog",
+    "url": "https://help.aliyun.com/zh/model-studio/model-release-notes",
+    "allowed_hosts": ["help.aliyun.com"]
+  },
+  {
     "name": "智谱 GLM",
     "kind": "rss",
     "url": "https://docs.bigmodel.cn/cn/update/new-releases/rss.xml",
@@ -210,5 +236,47 @@
     "article_path_prefix": "/blog/",
     "allowed_hosts": ["kimi.com"],
     "max_candidates": 12
+  },
+  {
+    "name": "OpenAI Codex Releases",
+    "kind": "rss",
+    "url": "https://github.com/openai/codex/releases.atom",
+    "allowed_hosts": ["github.com"],
+    "stable_releases_only": true
+  },
+  {
+    "name": "Anthropic Claude Code Releases",
+    "kind": "rss",
+    "url": "https://github.com/anthropics/claude-code/releases.atom",
+    "allowed_hosts": ["github.com"],
+    "stable_releases_only": true
+  },
+  {
+    "name": "Google Gemini CLI Releases",
+    "kind": "rss",
+    "url": "https://github.com/google-gemini/gemini-cli/releases.atom",
+    "allowed_hosts": ["github.com"],
+    "stable_releases_only": true
+  },
+  {
+    "name": "LangChain Releases",
+    "kind": "rss",
+    "url": "https://github.com/langchain-ai/langchain/releases.atom",
+    "allowed_hosts": ["github.com"],
+    "stable_releases_only": true
+  },
+  {
+    "name": "LiteLLM Releases",
+    "kind": "rss",
+    "url": "https://github.com/BerriAI/litellm/releases.atom",
+    "allowed_hosts": ["github.com"],
+    "stable_releases_only": true
+  },
+  {
+    "name": "vLLM Releases",
+    "kind": "rss",
+    "url": "https://github.com/vllm-project/vllm/releases.atom",
+    "allowed_hosts": ["github.com"],
+    "stable_releases_only": true
   }
 ]

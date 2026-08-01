@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import re
 import urllib.error
@@ -141,6 +142,8 @@ def _fetch_bytes(url: str, storage: Storage) -> tuple[bytes, bool]:
     try:
         with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
             body = response.read()
+            if response.headers.get("Content-Encoding", "").casefold() == "gzip":
+                body = gzip.decompress(body)
             storage.put_http_cache(
                 url,
                 body,
@@ -171,12 +174,13 @@ def _fetch_youtube_channel(
     channel: dict[str, str],
     cutoff: datetime,
     storage: Storage,
+    fetcher: Callable[[str, Storage], tuple[bytes, bool]] = _fetch_bytes,
 ) -> tuple[list[ContentItem], bool]:
     url = (
         "https://www.youtube.com/feeds/videos.xml?channel_id="
         + urllib.parse.quote(channel["channel_id"])
     )
-    body, cached = _fetch_bytes(url, storage)
+    body, cached = fetcher(url, storage)
     root = ET.fromstring(body)
     items: list[ContentItem] = []
     for entry in root.findall("atom:entry", NS):
@@ -208,14 +212,19 @@ def fetch_youtube(
     channels: list[dict[str, str]],
     cutoff: datetime,
     storage: Storage,
+    fetcher: Callable[[str, Storage], tuple[bytes, bool]] = _fetch_bytes,
 ) -> tuple[list[ContentItem], SourceHealth]:
     items: list[ContentItem] = []
     failed = 0
     cached = 0
+    channels_with_items = 0
+    failed_channels: list[str] = []
     workers = min(6, len(channels))
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(_fetch_youtube_channel, channel, cutoff, storage): channel
+            executor.submit(
+                _fetch_youtube_channel, channel, cutoff, storage, fetcher
+            ): channel
             for channel in channels
         }
         for future in as_completed(futures):
@@ -223,17 +232,27 @@ def fetch_youtube(
                 channel_items, used_cache = future.result()
             except Exception:
                 failed += 1
+                failed_channels.append(futures[future]["name"])
                 continue
             items.extend(channel_items)
             cached += int(used_cache)
+            channels_with_items += int(bool(channel_items))
     status = "error" if failed == len(channels) else "partial" if failed else "ok"
+    fetched = len(channels) - failed
+    detail = (
+        f"{len(channels)} configured channels; {fetched} fetched; "
+        f"{channels_with_items} with in-window items; "
+        f"{fetched - channels_with_items} without in-window items"
+    )
+    if failed_channels:
+        detail += f"; unavailable: {', '.join(sorted(failed_channels))}"
     health = SourceHealth(
         source="youtube",
         status=status,
-        fetched=len(channels) - failed,
+        fetched=fetched,
         failed=failed,
         cached=cached,
-        detail=f"{len(channels)} configured channels",
+        detail=detail,
     )
     return items, health
 

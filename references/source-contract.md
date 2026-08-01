@@ -7,15 +7,25 @@
   first-party JSON endpoints, embedded server-rendered indexes, and bounded same-domain newsroom
   indexes. Evidence is limited to publisher-supplied descriptions, changelog entries, abstracts,
   or public article metadata; scripts and article bodies are never executed or summarized.
-  Source-specific title/category filters remove broad corporate noise. Each configured endpoint
-  fails independently, and page-structure changes surface in `source_health`.
+  Source-specific title/category filters remove broad corporate noise. Curated GitHub release Atom
+  feeds are treated as first-party project release evidence and exclude alpha, beta, release
+  candidate, preview, nightly, development, and canary versions. Each configured endpoint fails
+  independently, and page-structure changes surface in `source_health`. Domestic coverage separates
+  model-lab announcements (ByteDance Seed, Qwen, Zhipu GLM, MiniMax, and Kimi) from cloud-platform
+  updates (Volcengine, Baidu Qianfan, Tencent Hunyuan, and Alibaba Cloud Model Studio). Chinese dated
+  sections and release-note tables are parsed as dated evidence; Volcengine uses only the official
+  machine-learning category from its server-rendered release index. A release-index item without a
+  publisher summary remains unavailable rather than being summarized from its title.
 - Industry digests: publisher-owned editorial feeds from `industry-digest-sources.json`.
-  DeepLearning.AI's The Batch is collected from its official Ghost RSS as one weekly issue.
+  The set is intentionally small and company-oriented: The Batch, TechCrunch AI, InfoQ AI/ML, and
+  Interconnects cover editorial synthesis, company events, enterprise engineering, and model-market
+  strategy.
   Evidence comes only from the RSS description; `content:encoded` and article bodies are ignored.
   These records are labeled editorial synthesis, not first-party model announcements.
 - YouTube: public channel Atom feeds from the active external subscription database. The bundled
   `youtube-channels.json` seeds that database without overwriting owner-confirmed additions.
-  Evidence comes from the publisher-provided `media:description` field.
+  Evidence comes from the publisher-provided `media:description` field. Source health distinguishes
+  fetch failures from channels that fetched successfully but had no item in the report window.
 - AIHOT: the official public selected-items API; evidence comes from its supplied summary.
 - Builders X: the public `feed-x.json` maintained by `follow-builders`, restricted to the
   repository-owned `builders-x-accounts.json` allowlist. Evidence comes only from each accepted
@@ -31,8 +41,9 @@
   Builders X uses the newest upstream 24-hour snapshot because that feed may refresh many hours
   before the 08:30 run. The feed itself must still be no more than 36 hours old.
 
-The collector uses conditional requests when validators are available and can use a recent private
-cache during transient outages. Every fallback is visible in `source_health`; stale official RSS,
+The collector handles gzip responses, uses conditional requests when validators are available, and
+can use a recent private cache during transient outages. Every fallback is visible in
+`source_health`; stale official RSS,
 industry digest, YouTube, and AIHOT records outside the report window are excluded, and stale X snapshots fail
 closed. Canonical URLs are deduplicated across sources and across digest dates, with direct official
 records preferred over matching aggregator records discovered in the same run. Dated changelog

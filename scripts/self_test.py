@@ -24,11 +24,13 @@ from radar.official_news import (
     parse_official_feed,
     parse_qwen_api,
     parse_seed_router,
+    parse_volcengine_router,
 )
 from radar.url_utils import canonical_url
 from radar.source_material import source_text_status
 from radar.sources import (
     fetch_industry_digests,
+    fetch_youtube,
     load_builders_x_accounts,
     parse_builders_x,
 )
@@ -49,13 +51,17 @@ def main() -> int:
     official_sources = load_official_sources(
         Path(__file__).resolve().parents[1] / "references" / "official-news-sources.json"
     )
-    assert len(official_sources) == 24
+    assert len(official_sources) == 34
+    stable_release_sources = [
+        source for source in official_sources if source.get("stable_releases_only")
+    ]
+    assert len(stable_release_sources) == 6
     industry_sources = load_official_sources(
         Path(__file__).resolve().parents[1]
         / "references"
         / "industry-digest-sources.json"
     )
-    assert len(industry_sources) == 1
+    assert len(industry_sources) == 4
     assert industry_sources[0]["name"] == "DeepLearning.AI · The Batch"
     assert canonical_url(
         "https://www.example.com/news/model/?utm_source=test&ref=home"
@@ -84,6 +90,13 @@ def main() -> int:
     <guid>customer-tutorial</guid>
     <pubDate>Tue, 21 Jul 2026 07:00:00 GMT</pubDate>
   </item>
+  <item>
+    <title>v1.2.0-rc.1</title>
+    <description>A detailed prerelease that must not enter a stable release feed.</description>
+    <link>https://example.com/news/prerelease</link>
+    <guid>prerelease</guid>
+    <pubDate>Tue, 21 Jul 2026 08:00:00 GMT</pubDate>
+  </item>
 </channel></rss>"""
     parsed_official = parse_official_feed(
         official_rss,
@@ -93,6 +106,7 @@ def main() -> int:
             "url": "https://example.com/rss.xml",
             "allowed_hosts": ["example.com"],
             "title_exclude_terms": ["customer"],
+            "stable_releases_only": True,
         },
         datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
     )
@@ -129,6 +143,44 @@ def main() -> int:
     assert industry_items[0].source.startswith("行业精选 · ")
     assert industry_items[0].extra.startswith("编辑 RSS")
     assert "Full article body" not in industry_items[0].raw_source_text
+    youtube_feed = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:yt="http://www.youtube.com/xml/schemas/2015"
+      xmlns:media="http://search.yahoo.com/mrss/">
+  <entry>
+    <yt:videoId>{video_id}</yt:videoId>
+    <title>{title}</title>
+    <published>{published}</published>
+    <link rel="alternate" href="https://www.youtube.com/watch?v={video_id}"/>
+    <media:group><media:description>A useful company AI engineering update.</media:description></media:group>
+  </entry>
+</feed>"""
+    active_channel_id = "UC" + "A" * 22
+    quiet_channel_id = "UC" + "B" * 22
+
+    def fake_youtube_fetcher(url: str, _: Storage) -> tuple[bytes, bool]:
+        active = url.endswith(active_channel_id)
+        return youtube_feed.format(
+            video_id="active-video" if active else "old-video",
+            title="Active update" if active else "Old update",
+            published="2026-07-21T08:00:00+00:00" if active else "2026-07-19T08:00:00+00:00",
+        ).encode("utf-8"), False
+
+    with tempfile.TemporaryDirectory() as temporary:
+        youtube_storage = Storage(Path(temporary))
+        youtube_storage.initialize()
+        youtube_items, youtube_health = fetch_youtube(
+            [
+                {"name": "Active", "channel_id": active_channel_id},
+                {"name": "Quiet", "channel_id": quiet_channel_id},
+            ],
+            datetime(2026, 7, 21, 0, 0, tzinfo=timezone.utc),
+            youtube_storage,
+            fake_youtube_fetcher,
+        )
+    assert len(youtube_items) == 1 and youtube_health.status == "ok"
+    assert "1 with in-window items" in youtube_health.detail
+    assert "1 without in-window items" in youtube_health.detail
     changelog_items = parse_official_changelog(
         b"""<html><body>
           <h2>July 21, 2026</h2>
@@ -147,6 +199,24 @@ def main() -> int:
     assert len(changelog_items) == 1
     assert changelog_items[0].extra == "官方 Changelog"
     assert "structured tool calling" in changelog_items[0].raw_source_text
+    chinese_changelog_items = parse_official_changelog(
+        """<html><body>
+          <h2>2026年7月21日</h2>
+          <p>模型服务新增稳定版本，并提供完整迁移说明和调用参数。</p>
+          <table><tr><th>日期</th><th>模块</th><th>功能说明</th></tr>
+          <tr><td>7月21日</td><td>平台功能</td><td>智能体记忆库正式商用并发布计费说明。</td></tr>
+          <tr><td>7月19日</td><td>平台功能</td><td>窗口外的历史更新。</td></tr></table>
+        </body></html>""".encode("utf-8"),
+        {
+            "name": "Example China API",
+            "kind": "html_changelog",
+            "url": "https://example.com/changelog-cn",
+            "allowed_hosts": ["example.com"],
+        },
+        datetime(2026, 7, 21, 0, 0, tzinfo=timezone.utc),
+    )
+    assert len(chinese_changelog_items) == 1
+    assert "智能体记忆库" in chinese_changelog_items[0].raw_source_text
 
     qwen_items = parse_qwen_api(
         json.dumps(
@@ -220,6 +290,52 @@ def main() -> int:
     )
     assert len(seed_items) == 1
     assert seed_items[0].title == "Seed 模型发布"
+
+    volcengine_payload = {
+        "loaderData": {
+            "__ssr_without_user/news/page": {
+                "listOnlineArticle": {
+                    "List": [
+                        {
+                            "DocumentID": 23,
+                            "CategoryCode": "machinelearning",
+                            "CategoryCodeName": "机器学习",
+                            "Title": "火山方舟模型服务发布智能路由",
+                            "Summary": "智能路由根据质量、时延和成本目标选择模型服务。",
+                            "Description": "",
+                            "CreatedTime": "2026-07-21T08:00:00+08:00",
+                        },
+                        {
+                            "DocumentID": 24,
+                            "CategoryCode": "database",
+                            "CategoryCodeName": "数据库",
+                            "Title": "数据库更新",
+                            "Summary": "不属于人工智能与机器学习分类。",
+                            "CreatedTime": "2026-07-21T09:00:00+08:00",
+                        },
+                    ]
+                }
+            }
+        }
+    }
+    volcengine_items = parse_volcengine_router(
+        (
+            "<script>window._ROUTER_DATA = "
+            + json.dumps(volcengine_payload, ensure_ascii=False)
+            + "</script>"
+        ).encode("utf-8"),
+        {
+            "name": "火山引擎",
+            "kind": "volcengine_router",
+            "url": "https://www.volcengine.com/news",
+            "article_url_template": "https://www.volcengine.com/news/detail/{id}",
+            "allowed_categories": ["machinelearning", "机器学习"],
+            "allowed_hosts": ["volcengine.com"],
+        },
+        datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    assert len(volcengine_items) == 1
+    assert volcengine_items[0].url.endswith("/23")
 
     source = {
         "items": [
@@ -799,7 +915,7 @@ def main() -> int:
 
     diagnostics = doctor()
     assert diagnostics["status"] == "ok", json.dumps(diagnostics, ensure_ascii=False)
-    print(json.dumps({"status": "ok", "tests": 39}, ensure_ascii=False))
+    print(json.dumps({"status": "ok", "tests": 42}, ensure_ascii=False))
     return 0
 
 

@@ -31,6 +31,10 @@ DATE_PUBLISHED_RE = re.compile(
 )
 CHANGELOG_DATE_RE = re.compile(
     r"(?P<iso>20\d{2}-\d{2}-\d{2})|"
+    r"(?P<cn_full>(?P<cn_year>20\d{2})\s*年\s*(?P<cn_full_month>\d{1,2})\s*月\s*"
+    r"(?P<cn_full_day>\d{1,2})\s*日?)|"
+    r"(?P<cn_short>(?P<cn_short_month>\d{1,2})\s*月\s*"
+    r"(?P<cn_short_day>\d{1,2})\s*日)|"
     r"(?P<month_first>(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|"
     r"Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|"
     r"Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2})(?:,\s*(?P<month_year>20\d{2}))?|"
@@ -42,6 +46,10 @@ CHANGELOG_DATE_RE = re.compile(
 SEED_ROUTER_RE = re.compile(
     r"window\._ROUTER_DATA\s*=\s*(\{.*?\})\s*</script>",
     re.DOTALL,
+)
+PRERELEASE_TITLE_RE = re.compile(
+    r"(?:^|[._-])(?:alpha|beta|rc|preview|nightly|dev|canary)(?:[._-]|\d|$)|\drc\d",
+    re.IGNORECASE,
 )
 
 
@@ -60,6 +68,7 @@ class OfficialSource(TypedDict):
     title_exclude_terms: NotRequired[list[str]]
     allow_json_date: NotRequired[bool]
     allow_content_fallback: NotRequired[bool]
+    stable_releases_only: NotRequired[bool]
 
 
 class _TextExtractor(HTMLParser):
@@ -224,6 +233,50 @@ class _ChangelogBlockParser(HTMLParser):
             self.events.append((normalized, text))
 
 
+class _TableRowParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.rows: list[list[str]] = []
+        self.current_row: list[str] | None = None
+        self.cell_parts: list[str] | None = None
+        self.ignored_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        normalized = tag.casefold()
+        if normalized in {"script", "style", "svg"}:
+            self.ignored_depth += 1
+        elif not self.ignored_depth and normalized == "tr":
+            self.current_row = []
+        elif (
+            not self.ignored_depth
+            and normalized in {"td", "th"}
+            and self.current_row is not None
+        ):
+            self.cell_parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self.cell_parts is not None and not self.ignored_depth:
+            self.cell_parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        normalized = tag.casefold()
+        if normalized in {"script", "style", "svg"}:
+            if self.ignored_depth:
+                self.ignored_depth -= 1
+            return
+        if self.ignored_depth:
+            return
+        if normalized in {"td", "th"} and self.cell_parts is not None:
+            text = _clean_text(" ".join(self.cell_parts))
+            if text and self.current_row is not None:
+                self.current_row.append(text)
+            self.cell_parts = None
+        elif normalized == "tr" and self.current_row is not None:
+            if self.current_row:
+                self.rows.append(self.current_row)
+            self.current_row = None
+
+
 def _validate_https_url(value: object, label: str) -> str:
     url = str(value or "").strip()
     parsed = urllib.parse.urlsplit(url)
@@ -252,7 +305,14 @@ def load_official_sources(path: Path) -> list[OfficialSource]:
         normalized_name = name.casefold()
         if not name or normalized_name in seen_names:
             raise ValueError(f"official source {index} has an invalid or duplicate name")
-        if kind not in {"rss", "html_index", "html_changelog", "qwen_api", "seed_router"}:
+        if kind not in {
+            "rss",
+            "html_index",
+            "html_changelog",
+            "qwen_api",
+            "seed_router",
+            "volcengine_router",
+        }:
             raise ValueError(f"official source {index} has an unsupported kind")
         allowed_hosts_value = entry.get("allowed_hosts")
         if not isinstance(allowed_hosts_value, list) or not allowed_hosts_value:
@@ -286,20 +346,38 @@ def load_official_sources(path: Path) -> list[OfficialSource]:
             )
         if not allow_content_fallback:
             normalized["allow_content_fallback"] = False
+        stable_releases_only = entry.get("stable_releases_only", False)
+        if not isinstance(stable_releases_only, bool):
+            raise ValueError(
+                f"official source {index} has invalid stable_releases_only"
+            )
+        if stable_releases_only:
+            if kind != "rss":
+                raise ValueError(
+                    f"official source {index} stable release filtering requires RSS"
+                )
+            normalized["stable_releases_only"] = True
 
-        if kind in {"rss", "html_changelog", "qwen_api", "seed_router"}:
+        if kind in {
+            "rss",
+            "html_changelog",
+            "qwen_api",
+            "seed_router",
+            "volcengine_router",
+        }:
             url = _validate_https_url(entry.get("url"), f"official source {index} url")
             if normalized_host(urllib.parse.urlsplit(url).hostname or "") not in allowed_hosts:
                 raise ValueError(f"official source {index} URL host is not allowlisted")
             normalized["url"] = url
-            if kind in {"qwen_api", "seed_router"}:
+            if kind in {"qwen_api", "seed_router", "volcengine_router"}:
                 template = str(entry.get("article_url_template", "")).strip()
-                if template.count("{slug}") != 1:
+                placeholder = "{id}" if kind == "volcengine_router" else "{slug}"
+                if template.count(placeholder) != 1:
                     raise ValueError(
-                        f"official source {index} article URL template must contain {{slug}}"
+                        f"official source {index} article URL template must contain {placeholder}"
                     )
                 test_url = _validate_https_url(
-                    template.replace("{slug}", "example"),
+                    template.replace(placeholder, "example"),
                     f"official source {index} article URL template",
                 )
                 if normalized_host(
@@ -407,6 +485,33 @@ def _changelog_date(value: str, cutoff: datetime) -> tuple[datetime, bool] | Non
         return None
     if match.group("iso"):
         return _parse_published(match.group("iso"))
+    if match.group("cn_full"):
+        try:
+            return (
+                datetime(
+                    int(match.group("cn_year")),
+                    int(match.group("cn_full_month")),
+                    int(match.group("cn_full_day")),
+                    tzinfo=timezone.utc,
+                ),
+                True,
+            )
+        except ValueError:
+            return None
+    if match.group("cn_short"):
+        window_end = cutoff + timedelta(hours=24)
+        try:
+            parsed = datetime(
+                window_end.year,
+                int(match.group("cn_short_month")),
+                int(match.group("cn_short_day")),
+                tzinfo=timezone.utc,
+            )
+        except ValueError:
+            return None
+        if parsed > window_end + timedelta(days=31):
+            parsed = parsed.replace(year=parsed.year - 1)
+        return parsed, True
     date_text = match.group("month_first") or match.group("day_first")
     explicit_year = match.group("month_year") or match.group("day_year")
     if not date_text:
@@ -435,6 +540,8 @@ def _title_allowed(source: OfficialSource, title: str) -> bool:
     normalized = title.casefold()
     include = [term.casefold() for term in source.get("title_include_terms", [])]
     exclude = [term.casefold() for term in source.get("title_exclude_terms", [])]
+    if source.get("stable_releases_only") and PRERELEASE_TITLE_RE.search(title):
+        return False
     return (not include or any(term in normalized for term in include)) and not any(
         term in normalized for term in exclude
     )
@@ -511,11 +618,45 @@ def parse_official_changelog(
 ) -> list[ContentItem]:
     parser = _ChangelogBlockParser()
     parser.feed(body.decode("utf-8", errors="replace"))
-    date_tags = {"div", "h1", "h2", "h3", "h4", "h5", "h6", "time"}
+    table_parser = _TableRowParser()
+    table_parser.feed(body.decode("utf-8", errors="replace"))
+    date_tags = {
+        "div",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "li",
+        "p",
+        "time",
+    }
     content_tags = {"div", "h4", "h5", "h6", "li", "p"}
     window_end = cutoff + timedelta(hours=24)
     current_date: datetime | None = None
     chunks_by_date: dict[str, list[str]] = {}
+    for row in table_parser.rows:
+        dated_cells = [
+            (index, parsed)
+            for index, cell in enumerate(row)
+            if len(cell) <= 48 and (parsed := _changelog_date(cell, cutoff)) is not None
+        ]
+        if not dated_cells:
+            continue
+        date_index, (published_at, _) = dated_cells[0]
+        if not cutoff.date() <= published_at.date() <= window_end.date():
+            continue
+        date_key = published_at.date().isoformat()
+        chunks = chunks_by_date.setdefault(date_key, [])
+        for index, cell in enumerate(row):
+            if (
+                index != date_index
+                and len(cell) >= 2
+                and cell not in chunks
+                and len(chunks) < 30
+            ):
+                chunks.append(cell)
     for tag, text in parser.events:
         published = _changelog_date(text, cutoff) if tag in date_tags and len(text) <= 48 else None
         if published is not None:
@@ -685,6 +826,80 @@ def parse_seed_router(
     return items
 
 
+def parse_volcengine_router(
+    body: bytes,
+    source: OfficialSource,
+    cutoff: datetime,
+) -> list[ContentItem]:
+    match = SEED_ROUTER_RE.search(body.decode("utf-8", errors="replace"))
+    if not match:
+        raise ValueError("Volcengine page has no router data")
+    payload = json.loads(match.group(1))
+    loader_data = payload.get("loaderData") if isinstance(payload, dict) else None
+    if not isinstance(loader_data, dict):
+        raise ValueError("Volcengine router data has no loader data")
+    page = next(
+        (
+            value
+            for key, value in loader_data.items()
+            if key.endswith("/news/page") and isinstance(value, dict)
+        ),
+        None,
+    )
+    article_container = page.get("listOnlineArticle") if isinstance(page, dict) else None
+    articles = article_container.get("List") if isinstance(article_container, dict) else None
+    if not isinstance(articles, list):
+        raise ValueError("Volcengine router data has no article list")
+
+    allowed_categories = {
+        category.casefold() for category in source.get("allowed_categories", [])
+    }
+    allowed_hosts = set(source["allowed_hosts"])
+    template = source.get("article_url_template", "")
+    items: list[ContentItem] = []
+    for article in articles:
+        if not isinstance(article, dict):
+            continue
+        categories = {
+            str(article.get("CategoryCode", "")).casefold(),
+            str(article.get("CategoryCodeName", "")).casefold(),
+        }
+        if allowed_categories and not allowed_categories.intersection(categories):
+            continue
+        try:
+            published_at, date_only = _parse_published(
+                str(article.get("CreatedTime", ""))
+            )
+        except (TypeError, ValueError):
+            continue
+        title = _clean_text(str(article.get("Title", "")))
+        document_id = str(article.get("DocumentID", "")).strip()
+        if (
+            not title
+            or not document_id.isdigit()
+            or not _title_allowed(source, title)
+            or not _within_window(published_at, date_only, cutoff)
+        ):
+            continue
+        url = template.replace("{id}", document_id)
+        if not _allowed_article_url(url, allowed_hosts):
+            continue
+        description = article.get("Summary") or article.get("Description") or ""
+        items.append(
+            ContentItem(
+                item_id=hashlib.sha256(document_id.encode("utf-8")).hexdigest()[:24],
+                source_type="official_news",
+                source=f"官方发布 · {source['name']}",
+                title=title,
+                published_at=published_at,
+                url=url,
+                raw_source_text=_html_to_text(str(description))[:6000],
+                extra="官方 Embedded Index",
+            )
+        )
+    return items
+
+
 def _extract_published(
     metadata: _MetadataParser,
     raw_html: str,
@@ -817,7 +1032,13 @@ def fetch_official_news(
     for source in sources:
         try:
             kind = source["kind"]
-            if kind in {"rss", "html_changelog", "qwen_api", "seed_router"}:
+            if kind in {
+                "rss",
+                "html_changelog",
+                "qwen_api",
+                "seed_router",
+                "volcengine_router",
+            }:
                 feed_url = source.get("url", "")
                 if not feed_url:
                     raise ValueError("official source is missing its validated URL")
@@ -829,8 +1050,10 @@ def fetch_official_news(
                     source_items = parse_official_changelog(body, source, cutoff)
                 elif kind == "qwen_api":
                     source_items = parse_qwen_api(body, source, cutoff)
-                else:
+                elif kind == "seed_router":
                     source_items = parse_seed_router(body, source, cutoff)
+                else:
+                    source_items = parse_volcengine_router(body, source, cutoff)
             else:
                 index_url = source.get("index_url", "")
                 if not index_url:
