@@ -15,7 +15,9 @@
   updates (Volcengine, Baidu Qianfan, Tencent Hunyuan, and Alibaba Cloud Model Studio). Chinese dated
   sections and release-note tables are parsed as dated evidence; Volcengine uses only the official
   machine-learning category from its server-rendered release index. A release-index item without a
-  publisher summary remains unavailable rather than being summarized from its title.
+  publisher summary remains unavailable rather than being summarized from its title. AWS What's New
+  uses the official all-products feed with an AI-product title allowlist so database, compute, and
+  other unrelated service announcements do not enter the digest.
 - Industry digests: publisher-owned editorial feeds from `industry-digest-sources.json`.
   The set is intentionally small and company-oriented: The Batch, TechCrunch AI, InfoQ AI/ML, and
   Interconnects cover editorial synthesis, company events, enterprise engineering, and model-market

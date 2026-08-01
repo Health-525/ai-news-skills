@@ -181,6 +181,24 @@
     ]
   },
   {
+    "name": "AWS What's New · AI",
+    "kind": "rss",
+    "url": "https://aws.amazon.com/about-aws/whats-new/recent/feed/",
+    "allowed_hosts": ["aws.amazon.com"],
+    "title_include_terms": [
+      "Amazon Bedrock",
+      "SageMaker AI",
+      "Amazon Nova",
+      "Amazon Q",
+      "Kiro",
+      "AI agent",
+      "generative AI",
+      "foundation model",
+      "Model Context Protocol",
+      "MCP"
+    ]
+  },
+  {
     "name": "Stability AI",
     "kind": "rss",
     "url": "https://stability.ai/news-updates?format=rss",
