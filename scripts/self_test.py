@@ -586,6 +586,18 @@ def main() -> int:
     ]
     section_card = build_card("2026-07-20", section_items)
     section_elements = section_card["body"]["elements"]
+    assert section_card["config"]["style"]["text_size"]["section_heading"] == {
+        "default": "heading",
+        "pc": "heading",
+        "mobile": "heading",
+    }
+    source_headers = [
+        element
+        for element in section_elements
+        if element.get("tag") == "markdown" and "text_size" in element
+    ]
+    assert len(source_headers) == 5
+    assert all(element.get("text_size") == "section_heading" for element in source_headers)
 
     def element_position(marker: str) -> int:
         for index, element in enumerate(section_elements):
