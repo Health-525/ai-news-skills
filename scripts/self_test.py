@@ -51,7 +51,12 @@ def main() -> int:
     official_sources = load_official_sources(
         Path(__file__).resolve().parents[1] / "references" / "official-news-sources.json"
     )
-    assert len(official_sources) == 34
+    assert len(official_sources) == 35
+    aws_whats_new = next(
+        source for source in official_sources if source["name"] == "AWS What's New · AI"
+    )
+    assert aws_whats_new["url"].endswith("/about-aws/whats-new/recent/feed/")
+    assert "Amazon Bedrock" in aws_whats_new["title_include_terms"]
     stable_release_sources = [
         source for source in official_sources if source.get("stable_releases_only")
     ]
@@ -915,7 +920,7 @@ def main() -> int:
 
     diagnostics = doctor()
     assert diagnostics["status"] == "ok", json.dumps(diagnostics, ensure_ascii=False)
-    print(json.dumps({"status": "ok", "tests": 42}, ensure_ascii=False))
+    print(json.dumps({"status": "ok", "tests": 43}, ensure_ascii=False))
     return 0
 
 
