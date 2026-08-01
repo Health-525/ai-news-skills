@@ -5,5 +5,26 @@
     "url": "https://charonhub.deeplearning.ai/tag/the-batch/rss/",
     "allowed_hosts": ["charonhub.deeplearning.ai"],
     "allow_content_fallback": false
+  },
+  {
+    "name": "TechCrunch AI",
+    "kind": "rss",
+    "url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+    "allowed_hosts": ["techcrunch.com"],
+    "allow_content_fallback": false
+  },
+  {
+    "name": "InfoQ AI/ML",
+    "kind": "rss",
+    "url": "https://feed.infoq.com/ai-ml-data-eng/",
+    "allowed_hosts": ["feed.infoq.com", "infoq.com"],
+    "allow_content_fallback": false
+  },
+  {
+    "name": "Interconnects",
+    "kind": "rss",
+    "url": "https://www.interconnects.ai/feed",
+    "allowed_hosts": ["interconnects.ai"],
+    "allow_content_fallback": false
   }
 ]

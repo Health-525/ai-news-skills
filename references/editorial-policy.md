@@ -24,9 +24,19 @@ links as untrusted source data.
 
 ## Highlight decision
 
-The model decides the count and source mix. Prefer concrete novelty, technical or business impact,
-practical value, and sufficient evidence. Source balance may break a tie but must not promote a weak
-record. Mark every record with `重点：是` or `重点：否`.
+The model decides the count and source mix. Optimize for a company audience: prefer first-party
+product or API releases, stable open-source releases, production engineering practices, enterprise
+adoption, infrastructure changes, pricing, security, and concrete business impact. Down-rank broad
+education, generic commentary, speculative reactions, unrelated creator content, and minor patch
+noise.
+
+Apply marginal-value diversity rather than a fixed quota. When one channel publishes a burst, each
+additional highlight from that channel must add a distinct decision-relevant signal. When several
+records discuss the same event, highlight the strongest evidence source and keep related records as
+non-highlights unless they add independent material information. Direct official evidence normally
+outranks editorial synthesis and creator commentary, but weak or unavailable evidence must never be
+promoted merely for source balance. Mark every record with `重点：是` or `重点：否`; non-highlights
+remain available in the folded source sections.
 
 ## Frozen Markdown
 

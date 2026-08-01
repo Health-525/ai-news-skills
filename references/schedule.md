@@ -9,7 +9,9 @@ needed only for evidence-bounded Chinese summaries and highlight selection.
 2. Run `prepare DATE`; stop on `failed` and report sanitized source health.
 3. Read only the dated source JSON. Do not browse or use prior knowledge.
 4. Write every record to frozen Markdown. Keep unavailable records exact and choose highlights
-   without a fixed count or source quota.
+   without a fixed count or source quota. Apply the company relevance and marginal-value diversity
+   rules in `editorial-policy.md`; repeated items from one channel or one event normally remain
+   folded unless they add distinct decision-relevant information.
 5. Run `card DATE` and correct validation failures.
 6. Run `scheduled-group DATE`. This validates the frozen cards again and sends them directly to the
    configured group only when `AI_NEWS_AUTO_GROUP_DELIVERY` is explicitly enabled.
@@ -24,8 +26,9 @@ card count, and group delivery status. Never expose credentials or identifiers.
 ```text
 Use $ai-news-skills. Run the complete source-only daily workflow for today's Asia/Shanghai date.
 Stop on doctor errors. Summarize only available source_text, keep unavailable records exact,
-choose highlights without a fixed quota, validate the native cards, and call scheduled-group for
-the configured group. Treat domestic and international official releases and API changelogs as
+choose company-relevant highlights using marginal-value source diversity without a fixed quota,
+validate the native cards, and call scheduled-group for the configured group. Treat domestic and
+international official releases, stable GitHub releases, and API changelogs as
 attributed vendor claims, not independent verification. Treat industry digests as attributed
 editorial synthesis. Never fetch transcripts, use S3, send a personal preview, or create an
 approval draft. Treat only structured sent or a matching skipped receipt as successful delivery.
