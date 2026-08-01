@@ -219,6 +219,7 @@ def _source_section(
     elements: list[dict] = [
         {
             "tag": "markdown",
+            "text_size": "section_heading",
             "content": (
                 f"**{icon} {label}**\n"
                 f"<font color='grey'>AI 判断 {len(highlights)} 条重点 · "
@@ -329,6 +330,17 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
     display_date = f"{parsed_date.year}年{parsed_date.month}月{parsed_date.day}日"
     return {
         "schema": "2.0",
+        "config": {
+            "style": {
+                "text_size": {
+                    "section_heading": {
+                        "default": "heading",
+                        "pc": "heading",
+                        "mobile": "heading",
+                    }
+                }
+            }
+        },
         "header": {
             "template": "orange",
             "title": {"tag": "plain_text", "content": f"📗 AI 前哨｜{display_date}"},
