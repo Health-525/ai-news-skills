@@ -13,24 +13,30 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Callable, NotRequired, TypedDict
 from xml.etree import ElementTree as ET
+from zoneinfo import ZoneInfo
 
 from .models import ContentItem, SourceHealth
 from .storage import Storage
 from .url_utils import canonical_url, normalized_host
 
 Fetcher = Callable[[str, Storage], tuple[bytes, bool]]
+REPORT_TIMEZONE = ZoneInfo("Asia/Shanghai")
+COLLECTION_LOOKBACK_HOURS = 96
 MONTH_DATE_RE = re.compile(
     r"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
     r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|"
     r"Dec(?:ember)?)\s+\d{1,2},\s+\d{4}\b",
     re.IGNORECASE,
 )
+NUMERIC_DATE_RE = re.compile(
+    r"\b(?P<year>20\d{2})[./](?P<month>\d{1,2})[./](?P<day>\d{1,2})\b"
+)
 DATE_PUBLISHED_RE = re.compile(
     r"""\\?["']datePublished\\?["']\s*:\s*\\?["']([^"'\\]+)""",
     re.IGNORECASE,
 )
 CHANGELOG_DATE_RE = re.compile(
-    r"(?P<iso>20\d{2}-\d{2}-\d{2})|"
+    r"(?P<iso>20\d{2}[-./]\d{1,2}[-./]\d{1,2})|"
     r"(?P<cn_full>(?P<cn_year>20\d{2})\s*年\s*(?P<cn_full_month>\d{1,2})\s*月\s*"
     r"(?P<cn_full_day>\d{1,2})\s*日?)|"
     r"(?P<cn_short>(?P<cn_short_month>\d{1,2})\s*月\s*"
@@ -69,6 +75,7 @@ class OfficialSource(TypedDict):
     allow_json_date: NotRequired[bool]
     allow_content_fallback: NotRequired[bool]
     stable_releases_only: NotRequired[bool]
+    preserve_feed_entries: NotRequired[bool]
 
 
 class _TextExtractor(HTMLParser):
@@ -190,7 +197,20 @@ class _MetadataParser(HTMLParser):
 
 
 class _ChangelogBlockParser(HTMLParser):
-    block_tags = {"div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "p", "time"}
+    block_tags = {
+        "button",
+        "div",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "li",
+        "p",
+        "span",
+        "time",
+    }
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -357,6 +377,17 @@ def load_official_sources(path: Path) -> list[OfficialSource]:
                     f"official source {index} stable release filtering requires RSS"
                 )
             normalized["stable_releases_only"] = True
+        preserve_feed_entries = entry.get("preserve_feed_entries", False)
+        if not isinstance(preserve_feed_entries, bool):
+            raise ValueError(
+                f"official source {index} has invalid preserve_feed_entries"
+            )
+        if preserve_feed_entries:
+            if kind != "rss":
+                raise ValueError(
+                    f"official source {index} feed entry preservation requires RSS"
+                )
+            normalized["preserve_feed_entries"] = True
 
         if kind in {
             "rss",
@@ -461,10 +492,28 @@ def _parse_published(value: str) -> tuple[datetime, bool]:
 
 
 def _within_window(published_at: datetime, date_only: bool, cutoff: datetime) -> bool:
-    return published_at.date() >= cutoff.date() if date_only else published_at >= cutoff
+    if date_only:
+        published_date = published_at.astimezone(REPORT_TIMEZONE).date()
+        cutoff_date = cutoff.astimezone(REPORT_TIMEZONE).date()
+        return published_date >= cutoff_date
+    return published_at >= cutoff
 
 
 def _month_date(value: str) -> tuple[datetime, bool] | None:
+    numeric_match = NUMERIC_DATE_RE.search(value)
+    if numeric_match:
+        try:
+            return (
+                datetime(
+                    int(numeric_match.group("year")),
+                    int(numeric_match.group("month")),
+                    int(numeric_match.group("day")),
+                    tzinfo=timezone.utc,
+                ),
+                True,
+            )
+        except ValueError:
+            return None
     match = MONTH_DATE_RE.search(value)
     if not match:
         return None
@@ -484,7 +533,7 @@ def _changelog_date(value: str, cutoff: datetime) -> tuple[datetime, bool] | Non
     if not match:
         return None
     if match.group("iso"):
-        return _parse_published(match.group("iso"))
+        return _parse_published(re.sub(r"[./]", "-", match.group("iso")))
     if match.group("cn_full"):
         try:
             return (
@@ -499,7 +548,7 @@ def _changelog_date(value: str, cutoff: datetime) -> tuple[datetime, bool] | Non
         except ValueError:
             return None
     if match.group("cn_short"):
-        window_end = cutoff + timedelta(hours=24)
+        window_end = cutoff + timedelta(hours=COLLECTION_LOOKBACK_HOURS)
         try:
             parsed = datetime(
                 window_end.year,
@@ -516,7 +565,7 @@ def _changelog_date(value: str, cutoff: datetime) -> tuple[datetime, bool] | Non
     explicit_year = match.group("month_year") or match.group("day_year")
     if not date_text:
         return None
-    window_end = cutoff + timedelta(hours=24)
+    window_end = cutoff + timedelta(hours=COLLECTION_LOOKBACK_HOURS)
     year = int(explicit_year) if explicit_year else window_end.year
     formats = ("%b %d %Y", "%B %d %Y", "%d %b %Y", "%d %B %Y")
     normalized = f"{date_text.replace(',', '')} {year}"
@@ -596,6 +645,11 @@ def parse_official_feed(
             continue
         url_key = canonical_url(link)
         item_id = hashlib.sha256((guid or url_key).encode("utf-8")).hexdigest()[:24]
+        extra = (
+            "官方 Release Notes"
+            if source.get("preserve_feed_entries")
+            else f"官方 RSS{f' · {category}' if category else ''}"
+        )
         items.append(
             ContentItem(
                 item_id=item_id,
@@ -605,7 +659,7 @@ def parse_official_feed(
                 published_at=published_at,
                 url=link,
                 raw_source_text=_html_to_text(description),
-                extra=f"官方 RSS{f' · {category}' if category else ''}",
+                extra=extra,
             )
         )
     return items
@@ -621,6 +675,7 @@ def parse_official_changelog(
     table_parser = _TableRowParser()
     table_parser.feed(body.decode("utf-8", errors="replace"))
     date_tags = {
+        "button",
         "div",
         "h1",
         "h2",
@@ -630,10 +685,11 @@ def parse_official_changelog(
         "h6",
         "li",
         "p",
+        "span",
         "time",
     }
-    content_tags = {"div", "h4", "h5", "h6", "li", "p"}
-    window_end = cutoff + timedelta(hours=24)
+    content_tags = {"div", "h3", "h4", "h5", "h6", "li", "p", "span"}
+    window_end = cutoff + timedelta(hours=COLLECTION_LOOKBACK_HOURS)
     current_date: datetime | None = None
     chunks_by_date: dict[str, list[str]] = {}
     for row in table_parser.rows:
@@ -805,7 +861,7 @@ def parse_seed_router(
             not title
             or not slug
             or not _title_allowed(source, title)
-            or not _within_window(published_at, False, cutoff)
+            or not _within_window(published_at, True, cutoff)
         ):
             continue
         url = template.replace("{slug}", urllib.parse.quote(slug, safe="-._~"))
@@ -992,6 +1048,14 @@ def _parse_official_index(
         if metadata is None:
             continue
         title, description, published_at, date_only = metadata
+        if (
+            index_published is not None
+            and index_published[1]
+            and index_published[0].date() == published_at.date()
+            and published_at.time() == datetime.min.time()
+        ):
+            # Newsrooms commonly serialize a date-only value as midnight UTC.
+            date_only = True
         if not title:
             title = candidate["label"]
         if not description:

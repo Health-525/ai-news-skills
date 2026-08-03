@@ -11,13 +11,24 @@
   feeds are treated as first-party project release evidence and exclude alpha, beta, release
   candidate, preview, nightly, development, and canary versions. Each configured endpoint fails
   independently, and page-structure changes surface in `source_health`. Domestic coverage separates
-  model-lab announcements (ByteDance Seed, Qwen, Zhipu GLM, MiniMax, and Kimi) from cloud-platform
-  updates (Volcengine, Baidu Qianfan, Tencent Hunyuan, and Alibaba Cloud Model Studio). Chinese dated
+  model and infrastructure vendors (ByteDance Seed, Qwen, Zhipu GLM, MiniMax, Kimi, DeepSeek,
+  Huawei AI, SiliconFlow, and SenseNova) from cloud-platform updates (Volcengine, Baidu Qianfan,
+  Tencent Hunyuan, and Alibaba Cloud Model Studio). Chinese dated
   sections and release-note tables are parsed as dated evidence; Volcengine uses only the official
   machine-learning category from its server-rendered release index. A release-index item without a
   publisher summary remains unavailable rather than being summarized from its title. AWS What's New
   uses the official all-products feed with an AI-product title allowlist so database, compute, and
-  other unrelated service announcements do not enter the digest.
+  other unrelated service announcements do not enter the digest. GitHub Changelog uses its official
+  feed with an AI, model, agent, MCP, and Copilot title allowlist. NVIDIA uses its official newsroom
+  feed with an AI product and infrastructure allowlist and explicit gaming exclusions. AWS coverage
+  combines the Machine Learning Blog, filtered What's New feed, and official Bedrock, AgentCore, and
+  SageMaker AI release-note feeds. Google Agent Platform uses the official Gemini Enterprise Agent
+  Platform release feed after the Vertex AI Agent Builder migration. Cloudflare's unified changelog
+  and the Databricks release feed use strict AI-product title allowlists. Release-note GUIDs remain
+  distinct even when several updates share one documentation URL; routine SageMaker managed-policy
+  churn is excluded. StepFun, Baichuan, 01.AI, and iFlytek remain explicit coverage gaps until they
+  expose a stable, day-dated first-party feed or a same-domain index with usable metadata; adding a
+  source name without collectible evidence is not treated as coverage.
 - Industry digests: publisher-owned editorial feeds from `industry-digest-sources.json`.
   The set is intentionally small and company-oriented: The Batch, TechCrunch AI, InfoQ AI/ML, and
   Interconnects cover editorial synthesis, company events, enterprise engineering, and model-market
@@ -35,10 +46,15 @@
   60 meaningful characters, recruiting or response-solicitation posts, posts without an
   AI/product/research signal, malformed canonical links, and posts outside the upstream snapshot.
   Source health reports the count rejected by each filter.
-- Window: official feeds, changelogs, first-party indexes, industry digests, YouTube, and AIHOT use
-  the 24 hours preceding collection time. Official pages that expose only a publication date use the
-  intersecting calendar dates to avoid dropping same-day releases due to unknown publisher
-  timezone. A source with no trustworthy publication date produces no item; a mutable build-time
+- Window: the primary reporting window is the 24 hours preceding collection time. Pull-based
+  official feeds, changelogs, first-party indexes, industry digests, YouTube, and AIHOT are fetched
+  with a 96-hour overlap, while persistent global identities prevent already-seen records from being
+  emitted again. This overlap recovers delayed feed entries, newly added sources, and transient
+  failures without routine duplicate delivery. Official pages that expose only a publication date use the
+  intersecting `Asia/Shanghai` calendar dates to avoid dropping same-day releases due to unknown
+  publisher timezone. A newsroom date serialized as midnight is treated as date-only only when the
+  bounded index independently exposes the same calendar date. A source with no trustworthy
+  publication date produces no item; a mutable build-time
   JSON date is not treated as publication evidence when disabled in source configuration.
   Builders X uses the newest upstream 24-hour snapshot because that feed may refresh many hours
   before the 08:30 run. The feed itself must still be no more than 36 hours old.
@@ -53,9 +69,11 @@ entries use the canonical changelog URL plus entry date, so separate release day
 
 ## Output schema
 
-The dated source JSON contains `schema_version`, `date`, `generated_at`, `summary_basis`, `window`,
-`source_health`, and `items`. Each item includes identity, source, publication time, canonical URL,
-quality status, cleaned source text, unavailable reason, and optional recommendation.
+The dated source JSON contains `schema_version`, `date`, `generated_at`, `summary_basis`, the
+24-hour `window`, the overlapping `collection_window`, `source_health`, and `items`. Each item includes identity, source, publication time, `recency_status`, canonical URL,
+quality status, cleaned source text, unavailable reason, and optional recommendation. A `current`
+item falls inside the primary 24-hour window; a `recovered` item is an unseen entry recovered from
+the overlap after source onboarding, delayed publication, or a transient collection failure.
 
 Only `source_text_status=available` records may be summarized. Link-heavy, promotional, empty, or
 materially short descriptions remain unavailable. Builders X filtering happens before records are

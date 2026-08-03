@@ -27,6 +27,8 @@ class ContentItem:
     @property
     def dedup_identity(self) -> str:
         normalized = canonical_url(self.url)
+        if self.extra == "官方 Release Notes":
+            return f"{normalized}#entry={self.item_id}"
         if self.extra == "官方 Changelog":
             return f"{normalized}#date={self.published_at.date().isoformat()}"
         return normalized

@@ -18,6 +18,13 @@
     "allowed_hosts": ["blog.google"]
   },
   {
+    "name": "Google Gemini Enterprise Agent Platform",
+    "kind": "rss",
+    "url": "https://cloud.google.com/feeds/gemini-enterprise-agent-platform-release-notes.xml",
+    "allowed_hosts": ["cloud.google.com", "docs.cloud.google.com"],
+    "preserve_feed_entries": true
+  },
+  {
     "name": "Anthropic",
     "kind": "html_index",
     "index_url": "https://www.anthropic.com/news",
@@ -142,6 +149,37 @@
     "allowed_hosts": ["docs.bigmodel.cn"]
   },
   {
+    "name": "华为 AI",
+    "kind": "rss",
+    "url": "https://www.huawei.com/en/rss-feeds/huawei-updates/rss",
+    "allowed_hosts": ["huawei.com"],
+    "title_include_terms": [
+      "Pangu",
+      "openPangu",
+      "Ascend",
+      "CloudMatrix",
+      "SuperPoD",
+      "AI Cloud",
+      "AI computing",
+      "large model",
+      "LLM"
+    ]
+  },
+  {
+    "name": "硅基流动 SiliconFlow",
+    "kind": "html_changelog",
+    "url": "https://docs.siliconflow.com/cn/release-notes/overview",
+    "allowed_hosts": ["docs.siliconflow.com"]
+  },
+  {
+    "name": "商汤 SenseNova",
+    "kind": "html_index",
+    "index_url": "https://www.sensetime.com/hk/research/",
+    "article_path_prefix": "/hk/research/",
+    "allowed_hosts": ["sensetime.com"],
+    "max_candidates": 20
+  },
+  {
     "name": "Microsoft AI",
     "kind": "rss",
     "url": "https://news.microsoft.com/source/topics/ai/feed/",
@@ -167,7 +205,12 @@
       "GPT",
       "Grok",
       "Mistral",
-      "Llama"
+      "Llama",
+      "AgentCore",
+      "Strands",
+      "SageMaker",
+      "Amazon Quick",
+      "AWS Transform"
     ],
     "title_exclude_terms": [
       "build ",
@@ -190,13 +233,86 @@
       "SageMaker AI",
       "Amazon Nova",
       "Amazon Q",
+      "Amazon Quick",
       "Kiro",
+      "Amazon Bedrock AgentCore",
+      "Strands Agents",
+      "AWS Transform",
+      "AWS Neuron",
+      "Trainium",
+      "Inferentia",
+      "Amazon Lex",
+      "Amazon Polly",
+      "Amazon Rekognition",
+      "Amazon Textract",
+      "Amazon Transcribe",
+      "Amazon Translate",
+      "Amazon Comprehend",
+      "Amazon Personalize",
+      "Amazon Kendra",
       "AI agent",
       "generative AI",
       "foundation model",
       "Model Context Protocol",
       "MCP"
     ]
+  },
+  {
+    "name": "Amazon Bedrock Release Notes",
+    "kind": "rss",
+    "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-ug.rss",
+    "allowed_hosts": ["docs.aws.amazon.com"],
+    "preserve_feed_entries": true
+  },
+  {
+    "name": "Amazon Bedrock AgentCore Release Notes",
+    "kind": "rss",
+    "url": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/bedrock-agentcore-dg.rss",
+    "allowed_hosts": ["docs.aws.amazon.com"],
+    "preserve_feed_entries": true
+  },
+  {
+    "name": "Amazon SageMaker AI Release Notes",
+    "kind": "rss",
+    "url": "https://docs.aws.amazon.com/sagemaker/latest/dg/amazon-sagemaker-release-notes.rss",
+    "allowed_hosts": ["docs.aws.amazon.com"],
+    "title_exclude_terms": ["managed policy updates"],
+    "preserve_feed_entries": true
+  },
+  {
+    "name": "Cloudflare AI Changelog",
+    "kind": "rss",
+    "url": "https://developers.cloudflare.com/changelog/rss/index.xml",
+    "allowed_hosts": ["developers.cloudflare.com"],
+    "title_include_terms": [
+      "Workers AI -",
+      "AI Gateway -",
+      "Agents -",
+      "AI Search -",
+      "Vectorize -"
+    ],
+    "preserve_feed_entries": true
+  },
+  {
+    "name": "Databricks AI",
+    "kind": "rss",
+    "url": "https://learn.microsoft.com/en-us/azure/databricks/feed.xml",
+    "allowed_hosts": ["learn.microsoft.com"],
+    "title_include_terms": [
+      "Mosaic AI",
+      "Agent Bricks",
+      "AI/BI",
+      "Genie",
+      "Foundation Model",
+      "Model Serving",
+      "MLflow",
+      "Vector Search",
+      "serverless GPU",
+      "machine learning",
+      "OpenAI connector",
+      "Anthropic connector"
+    ],
+    "preserve_feed_entries": true
   },
   {
     "name": "Stability AI",
@@ -254,6 +370,52 @@
     "article_path_prefix": "/blog/",
     "allowed_hosts": ["kimi.com"],
     "max_candidates": 12
+  },
+  {
+    "name": "GitHub Changelog · AI",
+    "kind": "rss",
+    "url": "https://github.blog/changelog/feed/",
+    "allowed_hosts": ["github.blog"],
+    "title_include_terms": [
+      "Copilot",
+      "GitHub Models",
+      "AI agent",
+      "agentic",
+      "MCP",
+      "Codex",
+      "Claude",
+      "Gemini",
+      "GPT",
+      "Grok",
+      "Kimi"
+    ]
+  },
+  {
+    "name": "NVIDIA",
+    "kind": "rss",
+    "url": "https://blogs.nvidia.com/feed/",
+    "allowed_hosts": ["blogs.nvidia.com"],
+    "title_include_terms": [
+      "NVIDIA AI",
+      "AI agent",
+      "AI model",
+      "AI factory",
+      "AI infrastructure",
+      "AI safety",
+      "AI security",
+      "agentic AI",
+      "generative AI",
+      "physical AI",
+      "build AI",
+      "inference",
+      "robotics",
+      "Jetson",
+      "DGX",
+      "Blackwell",
+      "NeMo",
+      "NIM"
+    ],
+    "title_exclude_terms": ["GeForce NOW", "gaming", "esports"]
   },
   {
     "name": "OpenAI Codex Releases",

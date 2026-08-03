@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .digest import build_cards, validate_frozen_digest
-from .official_news import load_official_sources
+from .official_news import COLLECTION_LOOKBACK_HOURS, load_official_sources
 from .source_material import source_text_status
 from .sources import collect_sources, load_builders_x_accounts, load_channels
 from .storage import Storage, atomic_write_json
@@ -26,6 +26,7 @@ RUNTIME_ENV_KEYS = {
     "AI_NEWS_OWNER_ID",
     "OPENCLAW_FEISHU_ACCOUNT_ID",
 }
+PRIMARY_WINDOW_HOURS = 24
 
 
 def skill_root() -> Path:
@@ -216,13 +217,14 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
             industry_sources = load_official_sources(industry_digest_sources_file())
             builders_x_accounts = load_builders_x_accounts(builders_x_accounts_file())
             now = datetime.now(timezone.utc)
-            cutoff = now - timedelta(hours=24)
+            cutoff = now - timedelta(hours=PRIMARY_WINDOW_HOURS)
+            collection_cutoff = now - timedelta(hours=COLLECTION_LOOKBACK_HOURS)
             items, health = collect_sources(
                 channels,
                 official_sources,
                 industry_sources,
                 builders_x_accounts,
-                cutoff,
+                collection_cutoff,
                 storage,
             )
             if all(entry.status == "error" for entry in health):
@@ -243,6 +245,9 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
                         "source": item.source,
                         "title": item.title,
                         "published_at": item.published_at.isoformat(),
+                        "recency_status": (
+                            "current" if item.published_at >= cutoff else "recovered"
+                        ),
                         "url": item.url,
                         "source_text_status": status,
                         "source_text": source_text,
@@ -257,6 +262,10 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
                 "generated_at": now.isoformat(),
                 "summary_basis": "curated_source_text",
                 "window": {"start": cutoff.isoformat(), "end": now.isoformat()},
+                "collection_window": {
+                    "start": collection_cutoff.isoformat(),
+                    "end": now.isoformat(),
+                },
                 "source_health": [entry.to_dict() for entry in health],
                 "items": records,
             }
