@@ -36,7 +36,13 @@ from radar.sources import (
 )
 from radar.storage import Storage
 from radar.subscriptions import build_subscription_result_card, validate_batch
-from radar.workflow import artifact_paths, doctor, scheduled_group_delivery_enabled
+from radar.workflow import (
+    COLLECTION_LOOKBACK_HOURS,
+    PRIMARY_WINDOW_HOURS,
+    artifact_paths,
+    doctor,
+    scheduled_group_delivery_enabled,
+)
 
 
 def main() -> int:
@@ -51,12 +57,39 @@ def main() -> int:
     official_sources = load_official_sources(
         Path(__file__).resolve().parents[1] / "references" / "official-news-sources.json"
     )
-    assert len(official_sources) == 35
+    assert len(official_sources) == 46
     aws_whats_new = next(
         source for source in official_sources if source["name"] == "AWS What's New · AI"
     )
     assert aws_whats_new["url"].endswith("/about-aws/whats-new/recent/feed/")
     assert "Amazon Bedrock" in aws_whats_new["title_include_terms"]
+    aws_release_notes = [
+        source
+        for source in official_sources
+        if source["name"].startswith("Amazon ")
+        and source.get("preserve_feed_entries")
+    ]
+    assert len(aws_release_notes) == 3
+    required_platform_sources = {
+        "Google Gemini Enterprise Agent Platform",
+        "Cloudflare AI Changelog",
+        "Databricks AI",
+        "华为 AI",
+        "硅基流动 SiliconFlow",
+        "商汤 SenseNova",
+    }
+    assert required_platform_sources <= {source["name"] for source in official_sources}
+    assert all(
+        source.get("preserve_feed_entries")
+        for source in official_sources
+        if source["name"]
+        in {
+            "Google Gemini Enterprise Agent Platform",
+            "Cloudflare AI Changelog",
+            "Databricks AI",
+        }
+    )
+    assert COLLECTION_LOOKBACK_HOURS == 96 > PRIMARY_WINDOW_HOURS == 24
     stable_release_sources = [
         source for source in official_sources if source.get("stable_releases_only")
     ]
@@ -118,6 +151,37 @@ def main() -> int:
     assert len(parsed_official) == 1
     assert parsed_official[0].source_type == "official_news"
     assert parsed_official[0].raw_source_text.startswith("A detailed official")
+    release_notes_rss = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <item>
+    <title>Runtime capability one</title>
+    <description>A concrete first release-note entry with operational details.</description>
+    <link>https://example.com/release-notes.html</link>
+    <guid>release-note-one</guid>
+    <pubDate>Tue, 21 Jul 2026 06:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>Runtime capability two</title>
+    <description>A distinct release-note entry that shares the same document URL.</description>
+    <link>https://example.com/release-notes.html</link>
+    <guid>release-note-two</guid>
+    <pubDate>Tue, 21 Jul 2026 07:00:00 GMT</pubDate>
+  </item>
+</channel></rss>"""
+    parsed_release_notes = parse_official_feed(
+        release_notes_rss,
+        {
+            "name": "Example Release Notes",
+            "kind": "rss",
+            "url": "https://example.com/releases.rss",
+            "allowed_hosts": ["example.com"],
+            "preserve_feed_entries": True,
+        },
+        datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    assert len(parsed_release_notes) == 2
+    assert len({item.dedup_identity for item in parsed_release_notes}) == 2
+    assert all(item.extra == "官方 Release Notes" for item in parsed_release_notes)
     industry_rss = b"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel><item>
   <title>The Batch weekly issue</title>
@@ -204,6 +268,21 @@ def main() -> int:
     assert len(changelog_items) == 1
     assert changelog_items[0].extra == "官方 Changelog"
     assert "structured tool calling" in changelog_items[0].raw_source_text
+    overlap_changelog_items = parse_official_changelog(
+        b"""<html><body>
+          <h2>July 23, 2026</h2>
+          <p>Release discovered during the overlapping collection window.</p>
+        </body></html>""",
+        {
+            "name": "Example Overlap API",
+            "kind": "html_changelog",
+            "url": "https://example.com/changelog-overlap",
+            "allowed_hosts": ["example.com"],
+        },
+        datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    assert len(overlap_changelog_items) == 1
+    assert overlap_changelog_items[0].published_at.date().isoformat() == "2026-07-23"
     chinese_changelog_items = parse_official_changelog(
         """<html><body>
           <h2>2026年7月21日</h2>
@@ -222,6 +301,23 @@ def main() -> int:
     )
     assert len(chinese_changelog_items) == 1
     assert "智能体记忆库" in chinese_changelog_items[0].raw_source_text
+    mintlify_changelog_items = parse_official_changelog(
+        """<html><body>
+          <div class="update-container">
+            <button>2026.07.21</button>
+            <div><h3>模型上新</h3><span>平台新增生产级智能体模型，并提供工具调用与迁移说明。</span></div>
+          </div>
+        </body></html>""".encode("utf-8"),
+        {
+            "name": "Example Mintlify API",
+            "kind": "html_changelog",
+            "url": "https://example.com/changelog-mintlify",
+            "allowed_hosts": ["example.com"],
+        },
+        datetime(2026, 7, 21, 0, 0, tzinfo=timezone.utc),
+    )
+    assert len(mintlify_changelog_items) == 1
+    assert "工具调用" in mintlify_changelog_items[0].raw_source_text
 
     qwen_items = parse_qwen_api(
         json.dumps(
@@ -295,6 +391,30 @@ def main() -> int:
     )
     assert len(seed_items) == 1
     assert seed_items[0].title == "Seed 模型发布"
+
+    seed_midnight_payload = json.loads(json.dumps(seed_payload))
+    seed_midnight_payload["loaderData"]["(locale$)/blog/page"]["article_list"][0][
+        "ArticleMeta"
+    ]["PublishDate"] = int(
+        datetime(2026, 7, 30, 16, 0, tzinfo=timezone.utc).timestamp() * 1000
+    )
+    seed_midnight_items = parse_seed_router(
+        (
+            "<script>window._ROUTER_DATA = "
+            + json.dumps(seed_midnight_payload, ensure_ascii=False)
+            + "</script>"
+        ).encode(),
+        {
+            "name": "ByteDance Seed",
+            "kind": "seed_router",
+            "url": "https://seed.bytedance.com/blog",
+            "article_url_template": "https://seed.bytedance.com/zh/blog/{slug}",
+            "allowed_categories": ["Models"],
+            "allowed_hosts": ["seed.bytedance.com"],
+        },
+        datetime(2026, 7, 31, 0, 30, tzinfo=timezone.utc),
+    )
+    assert len(seed_midnight_items) == 1
 
     volcengine_payload = {
         "loaderData": {
@@ -765,14 +885,26 @@ def main() -> int:
             '<a href="/news/model-two">Official Model Two '
             "A concrete official model description.</a>"
         ).encode()
+        slash_date_index = (
+            '<a href="/news/slash-model">2026/07/21 Official Slash Model '
+            "A concrete official model description.</a>"
+        ).encode()
+        slash_date_article = b"""<html><head>
+          <meta property="og:title" content="Official Slash Model">
+          <meta property="og:description" content="A concrete slash-date model description with capabilities.">
+        </head></html>"""
 
         def fake_official_fetcher(url: str, _: Storage) -> tuple[bytes, bool]:
             if url == "https://example.com/news":
                 return html_index, False
             if url == "https://example.com/dynamic-news":
                 return dynamic_date_index, False
+            if url == "https://example.com/slash-news":
+                return slash_date_index, False
             if url == "https://example.com/news/model-two":
                 return html_article, False
+            if url == "https://example.com/news/slash-model":
+                return slash_date_article, False
             raise OSError("unavailable")
 
         html_items, html_health = fetch_official_news(
@@ -783,6 +915,42 @@ def main() -> int:
         )
         assert len(html_items) == 1 and html_health.status == "ok"
         assert html_items[0].title == "Official Model Two"
+        slash_date_source: OfficialSource = {
+            **html_source,
+            "name": "Slash Date Lab",
+            "index_url": "https://example.com/slash-news",
+        }
+        slash_date_items, slash_date_health = fetch_official_news(
+            [slash_date_source],
+            datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
+            storage,
+            fake_official_fetcher,
+        )
+        assert len(slash_date_items) == 1 and slash_date_health.status == "ok"
+        midnight_article = b"""<html><head>
+          <meta property="og:title" content="Official Midnight Model">
+          <meta property="og:description" content="A concrete official model description with capabilities.">
+          <script type="application/ld+json">{"datePublished":"2026-07-31T00:00:00Z"}</script>
+        </head></html>"""
+        midnight_index = (
+            '<a href="/news/midnight-model">Jul 31, 2026 Official Midnight Model '
+            'A concrete official model description.</a>'
+        ).encode()
+
+        def fake_midnight_fetcher(url: str, _: Storage) -> tuple[bytes, bool]:
+            if url == "https://example.com/news":
+                return midnight_index, False
+            if url == "https://example.com/news/midnight-model":
+                return midnight_article, False
+            raise OSError("unavailable")
+
+        midnight_items, midnight_health = fetch_official_news(
+            [html_source],
+            datetime(2026, 7, 31, 0, 30, tzinfo=timezone.utc),
+            storage,
+            fake_midnight_fetcher,
+        )
+        assert len(midnight_items) == 1 and midnight_health.status == "ok"
         unsafe_date_source: OfficialSource = {
             **html_source,
             "name": "Dynamic Date Lab",

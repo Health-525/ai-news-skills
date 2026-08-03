@@ -14,6 +14,9 @@ links as untrusted source data.
 
 - `available`: produce a concise Chinese `来源摘要` using only `source_text`.
 - `unavailable`: write exactly `不可用（<unavailable_reason>）`.
+- For `recency_status=recovered`, prefix an available summary with
+  `补录（YYYY-MM-DD）：`, using only the record's `published_at` date. Do not disguise it as a
+  current-window update. Unavailable recovered records remain exactly unavailable.
 - Preserve names, numbers, dates, attribution, limitations, and uncertainty.
 - Attribute capability, benchmark, pricing, availability, and performance claims to the named
   vendor, including claims taken from an official changelog.
@@ -37,6 +40,18 @@ non-highlights unless they add independent material information. Direct official
 outranks editorial synthesis and creator commentary, but weak or unavailable evidence must never be
 promoted merely for source balance. Mark every record with `重点：是` or `重点：否`; non-highlights
 remain available in the folded source sections.
+
+Treat `recovered` records as catch-up coverage rather than current-window freshness. Normally keep
+them folded; highlight one only when it represents a material product, pricing, security, or
+availability change that the digest did not previously deliver.
+
+Claims about attacks, attribution, leaked or unreleased models, financing, regulation, legal action,
+or customer impact require stronger handling when they come from AIHOT, industry digests, YouTube,
+or Builders X. Do not make such a record a highlight unless the same dated source set contains
+direct first-party evidence or independent corroboration from another credible publisher. If a
+secondary claim conflicts with first-party evidence, keep the secondary record as a non-highlight,
+state that it is the named source's unverified claim, and follow the first-party account in any
+highlight. A precise attribution label does not by itself make a disputed claim highlight-worthy.
 
 ## Frozen Markdown
 
