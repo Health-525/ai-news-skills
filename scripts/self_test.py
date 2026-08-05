@@ -21,6 +21,7 @@ from radar.github_radar import (
     load_github_radar_config,
 )
 from radar.models import ContentItem
+from radar.release_announcement import build_release_card, load_release_manifest
 from radar.official_news import (
     OfficialSource,
     fetch_official_news,
@@ -75,6 +76,44 @@ def main() -> int:
         "model-context-protocol",
     ]
     assert github_config["max_items"] == 12
+    with tempfile.TemporaryDirectory() as temporary:
+        release_manifest_path = Path(temporary) / "release.json"
+        release_manifest_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "version": "a" * 40,
+                    "title": "GitHub 开源雷达上线",
+                    "summary": "本次发布增加热门开源项目观察，并强化来源质量校验。",
+                    "changes": [
+                        "新增 GitHub 开源雷达与 Star 增量快照",
+                        "强化官方来源健康检查和卡片分区",
+                    ],
+                    "verification": ["49 项离线测试通过", "生产 doctor 正常"],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        release_manifest = load_release_manifest(release_manifest_path)
+        release_card = build_release_card(
+            release_manifest,
+            datetime(2026, 8, 5, 10, 0, tzinfo=timezone.utc),
+        )
+        release_card_text = json.dumps(release_card, ensure_ascii=False)
+        assert "AI News Skills · 更新公告" in release_card_text
+        assert "GitHub 开源雷达上线" in release_card_text
+        assert "版本 `aaaaaaa`" in release_card_text
+        assert len(release_card_text.encode("utf-8")) < 20_000
+        release_manifest_path.write_text(
+            json.dumps({"schema_version": 1, "version": "short"}), encoding="utf-8"
+        )
+        try:
+            load_release_manifest(release_manifest_path)
+        except ValueError as error:
+            assert "40-character Git commit" in str(error)
+        else:
+            raise AssertionError("short release version was accepted")
     aws_whats_new = next(
         source for source in official_sources if source["name"] == "AWS What's New · AI"
     )
@@ -1384,7 +1423,7 @@ def main() -> int:
 
     diagnostics = doctor()
     assert diagnostics["status"] == "ok", json.dumps(diagnostics, ensure_ascii=False)
-    print(json.dumps({"status": "ok", "tests": 49}, ensure_ascii=False))
+    print(json.dumps({"status": "ok", "tests": 52}, ensure_ascii=False))
     return 0
 
 

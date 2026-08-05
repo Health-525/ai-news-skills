@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from radar.approval import build_approval_card
 from radar.delivery import send_group_cards, send_personal_cards
+from radar.release_announcement import build_release_card, load_release_manifest
 from radar.storage import Storage
 from radar.subscriptions import (
     build_subscription_form_card,
@@ -24,6 +25,7 @@ from radar.workflow import (
     doctor,
     load_runtime_env,
     prepare,
+    release_announcements_enabled,
     render_cards,
     scheduled_group_delivery_enabled,
     skill_root,
@@ -91,6 +93,13 @@ def _parser() -> argparse.ArgumentParser:
     reject_parser = subparsers.add_parser("reject", help="Reject a pending digest draft")
     reject_parser.add_argument("--requester-id", required=True)
     reject_parser.add_argument("--draft-id")
+
+    release_parser = subparsers.add_parser(
+        "release-announcement",
+        help="Send an idempotent production release announcement to the configured group",
+    )
+    release_parser.add_argument("--manifest", required=True, type=Path)
+    release_parser.add_argument("--dry-run", action="store_true")
     return parser
 
 
@@ -251,6 +260,35 @@ def _handle_scheduled_group(date_str: str, dry_run: bool) -> int:
     return code
 
 
+def _handle_release_announcement(args: argparse.Namespace) -> int:
+    try:
+        manifest = load_release_manifest(args.manifest)
+        version = str(manifest["version"])
+        card = build_release_card(manifest)
+        if not args.dry_run:
+            if not release_announcements_enabled():
+                raise ValueError("release announcements are not explicitly enabled")
+            deployed_marker = skill_root() / ".deployment-commit"
+            deployed_version = deployed_marker.read_text(encoding="utf-8").strip().casefold()
+            if deployed_version != version:
+                raise ValueError("release manifest does not match the deployed commit")
+            if not _target("AI_NEWS_FEISHU_GROUP_TARGET"):
+                raise ValueError("group target is not configured")
+        code, result = send_group_cards(
+            [card],
+            _target("AI_NEWS_FEISHU_GROUP_TARGET"),
+            state_dir() / "receipts" / "releases" / f"{version}.json",
+            skill_root() / "scripts" / "send_feishu_card.mjs",
+            dry_run=args.dry_run,
+        )
+        result.update({"release": version[:7], "delivery_mode": "release_announcement"})
+        _print(result)
+        return code
+    except (OSError, ValueError) as error:
+        _print({"status": "failed", "error": str(error)})
+        return 1
+
+
 def _handle_approve(args: argparse.Namespace) -> int:
     try:
         _require_owner(args.requester_id)
@@ -293,6 +331,8 @@ def main() -> int:
         result = doctor()
         _print(result)
         return 1 if result["status"] == "error" else 0
+    if args.command == "release-announcement":
+        return _handle_release_announcement(args)
     if args.command in {
         "subscription-form",
         "subscription-propose",

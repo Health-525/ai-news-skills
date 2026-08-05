@@ -46,6 +46,15 @@ Read [references/approval-workflow.md](references/approval-workflow.md).
 Only the configured owner can approve. The group destination is private deployment configuration,
 never a command argument. Approval sends only the exact cards frozen in that draft.
 
+## Release routing
+
+After every verified production deployment, create a private schema-version-1 release manifest
+outside the Skill and run `python {baseDir}/scripts/daily_pipeline.py release-announcement
+--manifest FILE`. The manifest must use the exact full deployed Git commit and contain a concise
+title, summary, changes, and verification results. Treat only structured `sent` or matching
+`skipped` as a complete release announcement. Never send before the production marker is switched
+and post-deployment tests pass.
+
 ## Hard boundaries
 
 - Never fetch captions, audio, transcripts, or video pages. Channel-home lookup is allowed only
@@ -64,6 +73,9 @@ never a command argument. Approval sends only the exact cards frozen in that dra
 - Label summaries `来源摘要`, never `事实摘要` or `字幕摘要`.
 - Scheduled group delivery is allowed only through `scheduled-group` when the external runtime
   explicitly enables it. Manual group publication still requires fresh owner approval.
+- Release announcements are allowed only through `release-announcement`, require a manifest that
+  matches `.deployment-commit`, and require explicit external enablement. Never accept a target from
+  the manifest or command line.
 - Never modify OpenClaw/Feishu configuration during normal Skill execution.
 - Keep credentials, targets, state, reports, receipts, and caches outside the Skill.
 
