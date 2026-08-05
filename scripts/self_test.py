@@ -96,15 +96,39 @@ def main() -> int:
             encoding="utf-8",
         )
         release_manifest = load_release_manifest(release_manifest_path)
-        release_card = build_release_card(
-            release_manifest,
-            datetime(2026, 8, 5, 10, 0, tzinfo=timezone.utc),
-        )
+        release_card = build_release_card(release_manifest)
+        repeated_release_card = build_release_card(release_manifest)
         release_card_text = json.dumps(release_card, ensure_ascii=False)
+        assert repeated_release_card == release_card
         assert "AI News Skills · 更新公告" in release_card_text
         assert "GitHub 开源雷达上线" in release_card_text
         assert "版本 `aaaaaaa`" in release_card_text
         assert len(release_card_text.encode("utf-8")) < 20_000
+        release_receipt = Path(temporary) / "release-receipt.json"
+        release_cards_hash = hashlib.sha256(
+            json.dumps([release_card], ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        release_card_hash = hashlib.sha256(
+            json.dumps(release_card, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        release_receipt.write_text(
+            json.dumps(
+                {
+                    "status": "sent",
+                    "target_hash": hashlib.sha256(b"release-group").hexdigest(),
+                    "cards_sha256": release_cards_hash,
+                    "sent_card_hashes": [release_card_hash],
+                }
+            ),
+            encoding="utf-8",
+        )
+        release_code, release_result = send_group_cards(
+            [repeated_release_card],
+            "release-group",
+            release_receipt,
+            Path(temporary) / "unused.mjs",
+        )
+        assert release_code == 0 and release_result["status"] == "skipped"
         release_manifest_path.write_text(
             json.dumps({"schema_version": 1, "version": "short"}), encoding="utf-8"
         )
