@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 VERSION_RE = re.compile(r"^[0-9a-f]{40}$")
+CORRUPTED_TEXT_RE = re.compile(r"\?{2,}")
 MAX_CARD_BYTES = 20_000
 
 
@@ -20,6 +21,8 @@ def _text(value: object, field: str, minimum: int, maximum: int) -> str:
         )
     if any(ord(char) < 32 for char in normalized):
         raise ValueError(f"release manifest {field} contains control characters")
+    if CORRUPTED_TEXT_RE.search(normalized):
+        raise ValueError(f"release manifest {field} appears to contain corrupted text")
     return normalized
 
 

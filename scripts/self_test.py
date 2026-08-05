@@ -152,6 +152,25 @@ def main() -> int:
             assert "40-character Git commit" in str(error)
         else:
             raise AssertionError("short release version was accepted")
+        release_manifest_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "version": "a" * 40,
+                    "title": "AI ????? release",
+                    "summary": "A valid-length release summary for validation.",
+                    "changes": ["Valid release change"],
+                    "verification": ["Valid release verification"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        try:
+            load_release_manifest(release_manifest_path)
+        except ValueError as error:
+            assert "corrupted text" in str(error)
+        else:
+            raise AssertionError("corrupted release text was accepted")
     aws_whats_new = next(
         source for source in official_sources if source["name"] == "AWS What's New · AI"
     )
