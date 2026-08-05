@@ -35,7 +35,7 @@
 | SIGNAL / 信号层 | TRUST / 可信层 | DELIVERY / 交付层 |
 | --- | --- | --- |
 | 官方 Newsroom、API Changelog、稳定版 Releases | 每条记录独立证据，不跨来源补全事实 | 飞书原生卡片与超长内容自动拆分 |
-| 国内外行业 RSS、YouTube RSS 描述 | 证据不足显式标记 `不可用` | 重试、哈希回执与幂等 `skipped` |
+| 国内外行业 RSS、YouTube RSS 描述、B站投稿元数据 | 证据不足显式标记 `不可用` | 重试、哈希回执与幂等 `skipped` |
 | AIHOT、GitHub 开源雷达与 Builders X 白名单 | 冻结 Markdown 锁定模型输出边界 | 定时群直发与所有者审批双通道 |
 | 24 小时滚动窗口与来源级健康检查 | 官方主张、编辑观点和社交动态分层归因 | `08:30 Asia/Shanghai` 隔离会话运行 |
 
@@ -50,6 +50,7 @@ flowchart LR
         A["Official News<br/>& Changelog"]
         B["Industry RSS"]
         C["YouTube RSS<br/>Descriptions"]
+        O["Bilibili<br/>Submission Metadata"]
         D["AIHOT"]
         E["GitHub Radar<br/>Official API"]
         N["Builders X<br/>Allowlist"]
@@ -69,7 +70,7 @@ flowchart LR
         M["Feishu Group"]
     end
 
-    A & B & C & D & E & N --> F
+    A & B & C & O & D & E & N --> F
     F --> G --> H --> I --> J --> K --> L --> M
 
     classDef signal fill:#0f172a,stroke:#38bdf8,color:#f8fafc,stroke-width:2px
@@ -178,6 +179,7 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `references/industry-digest-sources.json` | 公司导向的行业与编辑型 RSS |
 | `references/github-radar.json` | GitHub AI 主题、发现窗口与热度阈值 |
 | `references/youtube-channels.json` | 初始 YouTube 频道种子列表 |
+| `references/bilibili-accounts.json` | 全量采集的 B 站账号白名单 |
 | `references/builders-x-accounts.json` | Builders X 本地账户白名单 |
 
 添加来源时遵循以下准入标准：
@@ -186,8 +188,10 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 2. 必须提供可信发布日期和可独立使用的来源简介；仅有标题的记录不得摘要。
 3. 必须配置主机白名单，并用标题或分类过滤公司博客中的非 AI 噪声。
 4. 全量产品源必须使用窄范围白名单，例如 AWS What's New 只保留 AI 产品动态。
-5. 新增来源后必须运行 `doctor`、`self_test.py` 和真实端点抽样。
-6. 同一事件的多来源记录保留，但重点选择遵循“最强证据优先、其余折叠”。
+5. 高频媒体必须配置 `max_items` 和赞助内容过滤，避免单一媒体占据行业分区。
+6. 新增来源后必须运行 `doctor`、`self_test.py` 和真实端点抽样。
+7. 同日跨媒体标题完全一致或高度相似的记录只保留确定性排序中的首条记录；官方来源
+   始终先于媒体进入流水线，提供独立分析或新增事实的报道继续保留并默认折叠。
 
 不要使用搜索结果页、转载聚合页、需要执行页面脚本才能确认日期的动态内容，或将文章标题
 当作摘要证据。
@@ -214,6 +218,7 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `AI_NEWS_GITHUB_RADAR_FILE` | GitHub 开源雷达配置覆盖文件 |
 | `AI_NEWS_GITHUB_TOKEN` | 可选的只读 GitHub API 令牌 |
 | `AI_NEWS_YOUTUBE_CHANNELS_FILE` | YouTube 频道配置覆盖文件 |
+| `AI_NEWS_BILIBILI_ACCOUNTS_FILE` | B 站账号配置覆盖文件 |
 | `AI_NEWS_AUTO_GROUP_DELIVERY` | 显式启用定时群直发 |
 | `AI_NEWS_RELEASE_ANNOUNCEMENTS` | 显式启用生产版本更新公告 |
 | `AI_NEWS_OWNER_ID` | 订阅与审批操作的认证所有者 |

@@ -306,7 +306,18 @@ class Storage:
 
     def seed_subscriptions(self, channels: list[dict[str, str]]) -> None:
         now = datetime.now(timezone.utc).isoformat()
+        bundled_ids = [channel["channel_id"] for channel in channels]
         with self._connect() as connection:
+            if bundled_ids:
+                placeholders = ",".join("?" for _ in bundled_ids)
+                connection.execute(
+                    f"""
+                    UPDATE subscriptions SET status = 'inactive'
+                    WHERE added_by_hash = 'bundled-seed'
+                      AND channel_id NOT IN ({placeholders})
+                    """,
+                    bundled_ids,
+                )
             connection.executemany(
                 """
                 INSERT OR IGNORE INTO subscriptions (
@@ -319,6 +330,20 @@ class Storage:
                         channel["name"],
                         f"https://www.youtube.com/channel/{channel['channel_id']}",
                         now,
+                    )
+                    for channel in channels
+                ),
+            )
+            connection.executemany(
+                """
+                UPDATE subscriptions SET status = 'active', name = ?, source_url = ?
+                WHERE channel_id = ? AND added_by_hash = 'bundled-seed'
+                """,
+                (
+                    (
+                        channel["name"],
+                        f"https://www.youtube.com/channel/{channel['channel_id']}",
+                        channel["channel_id"],
                     )
                     for channel in channels
                 ),
@@ -424,7 +449,9 @@ class Storage:
                     ON CONFLICT(channel_id) DO UPDATE SET
                         name=excluded.name,
                         source_url=excluded.source_url,
-                        status='active'
+                        status='active',
+                        added_at=excluded.added_at,
+                        added_by_hash=excluded.added_by_hash
                     """,
                     (
                         result["channel_id"],

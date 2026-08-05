@@ -72,6 +72,7 @@ class OfficialSource(TypedDict):
     allowed_categories: NotRequired[list[str]]
     title_include_terms: NotRequired[list[str]]
     title_exclude_terms: NotRequired[list[str]]
+    max_items: NotRequired[int]
     allow_json_date: NotRequired[bool]
     allow_content_fallback: NotRequired[bool]
     stable_releases_only: NotRequired[bool]
@@ -354,6 +355,15 @@ def load_official_sources(path: Path) -> list[OfficialSource]:
                 raise ValueError(f"official source {index} has invalid {field}")
             if values:
                 normalized[field] = [str(value).strip() for value in values]
+        if "max_items" in entry:
+            max_items = entry["max_items"]
+            if isinstance(max_items, bool) or not isinstance(max_items, int):
+                raise ValueError(f"official source {index} has invalid max_items")
+            if not 1 <= max_items <= 30:
+                raise ValueError(
+                    f"official source {index} max_items must be 1 through 30"
+                )
+            normalized["max_items"] = max_items
         allow_json_date = entry.get("allow_json_date", True)
         if not isinstance(allow_json_date, bool):
             raise ValueError(f"official source {index} has invalid allow_json_date")
@@ -589,10 +599,18 @@ def _title_allowed(source: OfficialSource, title: str) -> bool:
     normalized = title.casefold()
     include = [term.casefold() for term in source.get("title_include_terms", [])]
     exclude = [term.casefold() for term in source.get("title_exclude_terms", [])]
+
+    def matches(term: str) -> bool:
+        if re.fullmatch(r"[a-z0-9]{1,3}", term):
+            return bool(
+                re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", normalized)
+            )
+        return term in normalized
+
     if source.get("stable_releases_only") and PRERELEASE_TITLE_RE.search(title):
         return False
-    return (not include or any(term in normalized for term in include)) and not any(
-        term in normalized for term in exclude
+    return (not include or any(matches(term) for term in include)) and not any(
+        matches(term) for term in exclude
     )
 
 
@@ -1147,6 +1165,14 @@ def fetch_official_news(
                 )
                 cached_requests += article_cache
                 failed_articles += article_failures
+            matching_items = len(source_items)
+            max_items = source.get("max_items")
+            if max_items is not None and matching_items > max_items:
+                source_items = sorted(
+                    source_items,
+                    key=lambda item: (item.published_at, item.item_id),
+                    reverse=True,
+                )[:max_items]
             items.extend(source_items)
             fetched_sources += 1
             source_article_failures = failed_articles - article_failures_before
@@ -1159,6 +1185,8 @@ def fetch_official_news(
                     detail=(
                         f"{source_article_failures} article metadata failures"
                         if source_article_failures
+                        else f"limited {matching_items} matching items to {len(source_items)}"
+                        if matching_items > len(source_items)
                         else "no in-window items"
                         if not source_items
                         else ""

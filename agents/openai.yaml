@@ -1,4 +1,4 @@
 interface:
   display_name: "AI News Skills"
-  short_description: "Official AI releases, GitHub trends, RSS, YouTube, AIHOT, and X"
+  short_description: "Official AI releases, GitHub trends, RSS, YouTube, Bilibili, AIHOT, and X"
   default_prompt: "Use $ai-news-skills to prepare and validate today's source-only AI news digest."

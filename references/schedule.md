@@ -19,7 +19,7 @@ needed only for evidence-bounded Chinese summaries and highlight selection.
 7. Stop. Do not call `preview` or `approve` from the cron run.
 
 Success requires structured `sent` or a matching `skipped` receipt. Report total, official news,
-YouTube, AIHOT, GitHub radar, industry digest, Builders X, available, unavailable, highlights, source failures,
+YouTube, Bilibili, AIHOT, GitHub radar, industry digest, Builders X, available, unavailable, highlights, source failures,
 card count, and group delivery status. Never expose credentials or identifiers.
 
 ## Isolated-run prompt

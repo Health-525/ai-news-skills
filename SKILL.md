@@ -1,6 +1,6 @@
 ---
 name: ai-news-skills
-description: Collect domestic and international first-party AI announcements and API changelogs, editorial AI newsletters, YouTube channel RSS descriptions, AIHOT selected items, fast-rising GitHub AI repositories, and curated Builders X posts; prepare evidence-bounded Chinese AI daily cards; manage batch YouTube subscriptions; and deliver validated scheduled digests to Feishu. Use for AI 前哨、AI 风向标、模型厂商官方发布、GitHub 开源雷达、行业周报、RSS 日报、X 动态、频道订阅、定时飞书群投递及手动审批发布。 Never fetch captions, download media, transcribe videos, or use transcript/S3 handoffs.
+description: Collect domestic and international first-party AI announcements and API changelogs, editorial AI newsletters, YouTube channel RSS descriptions, full-account Bilibili submission metadata, AIHOT selected items, fast-rising GitHub AI repositories, and curated Builders X posts; prepare evidence-bounded Chinese AI daily cards; manage batch YouTube subscriptions; and deliver validated scheduled digests to Feishu. Use for AI 前哨、AI 风向标、模型厂商官方发布、GitHub 开源雷达、行业周报、RSS 日报、B站动态、X 动态、频道订阅、定时飞书群投递及手动审批发布。 Never fetch captions, download media, transcribe videos, or use transcript/S3 handoffs.
 ---
 
 # AI News Skills
@@ -58,7 +58,8 @@ and post-deployment tests pass.
 ## Hard boundaries
 
 - Never fetch captions, audio, transcripts, or video pages. Channel-home lookup is allowed only
-  while validating a submitted subscription handle.
+  while validating a submitted subscription handle. Bilibili collection may read only the
+  configured accounts' public submission-list metadata API.
 - Official news may read only configured HTTPS RSS/Atom feeds, dated changelogs, first-party JSON
   endpoints, embedded server-rendered data, or bounded same-domain news indexes and article
   metadata. Never execute page scripts, summarize article bodies, or infer from a headline.

@@ -5,7 +5,7 @@
 Each record is independent. Restate only its `source_text`; never transfer evidence between records.
 Official-news text is the named vendor's RSS description, dated changelog entry, first-party
 abstract, or public page metadata, but vendor claims remain attributed vendor claims rather than
-independent verification. YouTube RSS descriptions are
+independent verification. YouTube RSS descriptions and Bilibili submission descriptions are
 publisher-provided descriptions, not transcripts or verified video contents. AIHOT summaries are
 source-provided selected-item text. Industry digest text is publisher-provided editorial synthesis,
 not first-party evidence for the companies or research it discusses. GitHub radar text is an
@@ -53,7 +53,7 @@ them folded; highlight one only when it represents a material product, pricing, 
 availability change that the digest did not previously deliver.
 
 Claims about attacks, attribution, leaked or unreleased models, financing, regulation, legal action,
-or customer impact require stronger handling when they come from AIHOT, GitHub radar, industry digests, YouTube,
+or customer impact require stronger handling when they come from AIHOT, GitHub radar, industry digests, YouTube, Bilibili,
 or Builders X. Do not make such a record a highlight unless the same dated source set contains
 direct first-party evidence or independent corroboration from another credible publisher. If a
 secondary claim conflicts with first-party evidence, keep the secondary record as a non-highlight,

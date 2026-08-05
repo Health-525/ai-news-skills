@@ -12,10 +12,11 @@ MAX_CARD_BYTES = 25_000
 SOURCE_ORDER = {
     "official_news": 0,
     "youtube": 1,
-    "aihot": 2,
-    "github_trending": 3,
-    "industry_digest": 4,
-    "builders_x": 5,
+    "bilibili": 2,
+    "aihot": 3,
+    "github_trending": 4,
+    "industry_digest": 5,
+    "builders_x": 6,
 }
 ITEM_PATTERN = re.compile(
     r"^###\s+\d+\.\s+\[(?P<title>.+)]\((?P<url>https?://[^)]+)\)\s*$"
@@ -419,6 +420,7 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
         raise ValueError("date must be YYYY-MM-DD") from error
     official_news = [item for item in items if item.source_type == "official_news"]
     youtube = [item for item in items if item.source_type == "youtube"]
+    bilibili = [item for item in items if item.source_type == "bilibili"]
     aihot = [item for item in items if item.source_type == "aihot"]
     github_trending = [item for item in items if item.source_type == "github_trending"]
     industry_digest = [
@@ -428,6 +430,7 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
     if (
         len(official_news)
         + len(youtube)
+        + len(bilibili)
         + len(aihot)
         + len(github_trending)
         + len(industry_digest)
@@ -446,6 +449,7 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
                 f"补录 {recovered_count}\n"
                 f"官方 {len(official_news)} · "
                 f"YouTube {len(youtube)} · "
+                f"B站 {len(bilibili)} · "
                 f"AIHOT {len(aihot)} · GitHub {len(github_trending)} · "
                 f"行业精选 {len(industry_digest)} · "
                 f"X {len(builders_x)}\n"
@@ -469,6 +473,15 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
             youtube,
             "YouTube 视频",
             "youtube_more",
+        )
+    )
+    elements.extend(
+        _source_section(
+            "哔哩哔哩",
+            "📺",
+            bilibili,
+            "B站投稿",
+            "bilibili_more",
         )
     )
     elements.extend(

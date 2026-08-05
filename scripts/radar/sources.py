@@ -1,4 +1,4 @@
-"""Fetch official news, editorial digests, YouTube, AIHOT, and Builders X."""
+"""Fetch official news, editorial digests, video channels, AIHOT, and Builders X."""
 
 from __future__ import annotations
 
@@ -11,10 +11,12 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Callable
 from xml.etree import ElementTree as ET
 
+from .bilibili import fetch_bilibili
 from .models import ContentItem, SourceHealth
 from .official_news import OfficialSource, fetch_official_news
 from .github_radar import GitHubRadarConfig, fetch_github_trending
@@ -519,6 +521,7 @@ def _deduplicate_items(items: list[ContentItem]) -> list[ContentItem]:
     unique: dict[str, ContentItem] = {}
     seen_urls: set[str] = set()
     seen_events: set[tuple[str, str, str]] = set()
+    editorial_events: dict[str, list[tuple[str, str, str]]] = {}
     for item in items:
         if not item.item_id or not item.title or not item.url:
             continue
@@ -528,11 +531,39 @@ def _deduplicate_items(items: list[ContentItem]) -> list[ContentItem]:
         if item.source_type in {"official_news", "industry_digest"}:
             host = (urllib.parse.urlparse(item.url).hostname or "").casefold()
             host = host.removeprefix("www.")
-            title_key = re.sub(r"\W+", " ", item.title.casefold()).strip()
-            event_key = (host, item.published_at.date().isoformat(), title_key)
+            title_key = re.sub(
+                r"[^a-z0-9\u4e00-\u9fff]+", " ", item.title.casefold()
+            ).strip()
+            date_key = item.published_at.date().isoformat()
+            event_key = (host, date_key, title_key)
             if event_key in seen_events:
                 continue
+            duplicate_editorial_event = any(
+                previous_host != host
+                and (
+                    previous_type == "industry_digest"
+                    or item.source_type == "industry_digest"
+                )
+                and (
+                    previous_title == title_key
+                    or (
+                        min(len(previous_title), len(title_key)) >= 24
+                        and SequenceMatcher(
+                            None, previous_title, title_key, autojunk=False
+                        ).ratio()
+                        >= 0.92
+                    )
+                )
+                for previous_host, previous_title, previous_type in editorial_events.get(
+                    date_key, []
+                )
+            )
+            if duplicate_editorial_event:
+                continue
             seen_events.add(event_key)
+            editorial_events.setdefault(date_key, []).append(
+                (host, title_key, item.source_type)
+            )
         seen_urls.add(url_key)
         unique[item.key] = item
     return sorted(unique.values(), key=lambda item: item.published_at, reverse=True)
@@ -540,6 +571,7 @@ def _deduplicate_items(items: list[ContentItem]) -> list[ContentItem]:
 
 def collect_sources(
     channels: list[dict[str, str]],
+    bilibili_accounts: list[dict[str, str]],
     official_sources: list[OfficialSource],
     industry_digest_sources: list[OfficialSource],
     builders_x_accounts: list[dict[str, str]],
@@ -551,6 +583,9 @@ def collect_sources(
         official_sources, cutoff, storage, _fetch_bytes
     )
     youtube_items, youtube_health = fetch_youtube(channels, cutoff, storage)
+    bilibili_items, bilibili_health = fetch_bilibili(
+        bilibili_accounts, cutoff, storage
+    )
     aihot_items, aihot_health = fetch_aihot(cutoff, storage)
     github_items, github_health = fetch_github_trending(github_radar_config, storage)
     industry_digest_items, industry_digest_health = fetch_industry_digests(
@@ -563,6 +598,7 @@ def collect_sources(
         [
             *official_items,
             *youtube_items,
+            *bilibili_items,
             *aihot_items,
             *github_items,
             *industry_digest_items,
@@ -572,6 +608,7 @@ def collect_sources(
     return items, [
         official_health,
         youtube_health,
+        bilibili_health,
         aihot_health,
         github_health,
         industry_digest_health,

@@ -32,9 +32,13 @@
   expose a stable, day-dated first-party feed or a same-domain index with usable metadata; adding a
   source name without collectible evidence is not treated as coverage.
 - Industry digests: publisher-owned editorial feeds from `industry-digest-sources.json`.
-  The set is intentionally small and company-oriented: The Batch, TechCrunch AI, InfoQ AI/ML, and
-  Interconnects cover editorial synthesis, company events, enterprise engineering, and model-market
-  strategy.
+  The set is intentionally small and company-oriented: The Batch, TechCrunch AI, InfoQ AI/ML,
+  Interconnects, MIT Technology Review AI, The Register AI+ML, and the AI-filtered InfoQ China feed
+  cover editorial synthesis, company events, enterprise engineering, regulation, infrastructure,
+  and model-market strategy. Each feed has a bounded `max_items` value; broad feeds also use AI
+  title allowlists, while sponsored, partner, recruiting, course, and advertising titles are
+  excluded where applicable. This prevents one high-volume publisher from dominating the folded
+  media section.
   Evidence comes only from the RSS description; `content:encoded` and article bodies are ignored.
   These records are labeled editorial synthesis, not first-party model announcements.
 - YouTube: public channel Atom feeds from the active external subscription database. The bundled
@@ -44,6 +48,14 @@
   window. A conservative title-plus-description topic gate removes clearly unrelated uploads while
   retaining AI models, agents, inference, coding tools, autonomous systems, robotics, and AI
   infrastructure. The health detail reports how many in-window uploads were filtered off-topic.
+- Bilibili: public submission-list metadata for every account in `bilibili-accounts.json`. The
+  configured accounts are collected in full without an AI topic gate. Evidence is limited to the
+  publisher-supplied submission description; the collector never opens video pages, reads captions,
+  downloads media, or transcribes content. Empty or materially short descriptions remain
+  unavailable. Requests use Bilibili's public WBI signature, run serially with bounded retries, and
+  retain only successful responses in the 72-hour HTTP fallback cache. Account-list failures are
+  isolated per account and reported in `source_health`; a rejected response never masquerades as a
+  quiet account or overwrites a previously successful cache entry.
 - AIHOT: the official public selected-items API; evidence comes from its supplied summary.
 - GitHub open-source radar: official GitHub repository Search API metadata selected by the topics in
   `github-radar.json`. It excludes forks, archived repositories, missing descriptions, and projects
@@ -80,11 +92,14 @@
 The collector handles gzip responses, uses conditional requests when validators are available, and
 can use a recent private cache during transient outages. Every fallback is visible in
 `source_health`; stale official RSS,
-industry digest, YouTube, and AIHOT records outside the report window are excluded, and stale X snapshots fail
+  industry digest, YouTube, Bilibili, and AIHOT records outside the report window are excluded, and stale X snapshots fail
 closed. Canonical URLs are deduplicated across sources and across digest dates, with direct official
 records preferred over matching aggregator records discovered in the same run. Same-host official
 or editorial records with the same normalized title and publication date are also treated as one
-event, preventing duplicate documentation routes from producing duplicate cards. Dated changelog
+event, preventing duplicate documentation routes from producing duplicate cards. Cross-host
+records on the same date are merged only when at least one is editorial and their normalized
+titles are identical or extremely similar; separate official announcements and materially
+different editorial analysis remain independent records. Dated changelog
 entries use the canonical changelog URL plus entry date, so separate release days remain distinct.
 
 ## Output schema
@@ -121,6 +136,7 @@ dated source JSON, frozen Markdown, rendered cards, locks, and private receipts.
 Optional environment variables:
 
 - `AI_NEWS_YOUTUBE_CHANNELS_FILE`: external channel-list override.
+- `AI_NEWS_BILIBILI_ACCOUNTS_FILE`: external Bilibili account-list override.
 - `AI_NEWS_OFFICIAL_SOURCES_FILE`: external official-source-list override.
 - `AI_NEWS_INDUSTRY_DIGEST_SOURCES_FILE`: external editorial-feed-list override.
 - `AI_NEWS_GITHUB_RADAR_FILE`: external GitHub topic and threshold configuration override.

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from daily_pipeline import _handle_scheduled_group
 from radar.approval import build_approval_card
+from radar.bilibili import fetch_bilibili, load_bilibili_accounts
 from radar.delivery import _parse_bridge_payload, send_group_cards, send_personal_cards
 from radar.digest import FrozenItem, build_card, build_cards, validate_frozen_digest
 from radar.github_radar import (
@@ -60,6 +61,19 @@ def main() -> int:
     status, text, reason = source_text_status("Subscribe now https://example.com")
     assert status == "unavailable" and not text and reason
     assert reason == "来源未提供足够的可用简介"
+
+    bilibili_accounts = load_bilibili_accounts(
+        Path(__file__).resolve().parents[1] / "references" / "bilibili-accounts.json"
+    )
+    assert len(bilibili_accounts) == 6
+    assert {account["name"] for account in bilibili_accounts} == {
+        "秋芝2046",
+        "张咋啦Zara",
+        "张小珺商业访谈录",
+        "小Lin说",
+        "硅谷101",
+        "技术爬爬虾",
+    }
 
     official_sources = load_official_sources(
         Path(__file__).resolve().parents[1] / "references" / "official-news-sources.json"
@@ -185,8 +199,56 @@ def main() -> int:
         / "references"
         / "industry-digest-sources.json"
     )
-    assert len(industry_sources) == 4
+    assert len(industry_sources) == 7
     assert industry_sources[0]["name"] == "DeepLearning.AI · The Batch"
+    assert {source["name"] for source in industry_sources[-3:]} == {
+        "MIT Technology Review AI",
+        "The Register AI+ML",
+        "InfoQ 中文站 · AI",
+    }
+    assert all(1 <= source["max_items"] <= 4 for source in industry_sources)
+    with tempfile.TemporaryDirectory() as temporary:
+        invalid_source_path = Path(temporary) / "invalid-source.json"
+        invalid_source_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "name": "Invalid limit",
+                        "kind": "rss",
+                        "url": "https://example.com/feed",
+                        "allowed_hosts": ["example.com"],
+                        "max_items": 0,
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+        try:
+            load_official_sources(invalid_source_path)
+        except ValueError as error:
+            assert "max_items must be 1 through 30" in str(error)
+        else:
+            raise AssertionError("invalid source item limit was accepted")
+        invalid_source_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "name": "Implicit limit conversion",
+                        "kind": "rss",
+                        "url": "https://example.com/feed",
+                        "allowed_hosts": ["example.com"],
+                        "max_items": "3",
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+        try:
+            load_official_sources(invalid_source_path)
+        except ValueError as error:
+            assert "invalid max_items" in str(error)
+        else:
+            raise AssertionError("string source item limit was accepted")
     assert canonical_url(
         "https://www.example.com/news/model/?utm_source=test&ref=home"
     ) == "https://example.com/news/model"
@@ -237,6 +299,34 @@ def main() -> int:
     assert len(parsed_official) == 1
     assert parsed_official[0].source_type == "official_news"
     assert parsed_official[0].raw_source_text.startswith("A detailed official")
+    short_term_rss = official_rss.replace(
+        b"<title>Official Model One</title>",
+        b"<title>Training platform update</title>",
+    )
+    assert not parse_official_feed(
+        short_term_rss,
+        {
+            "name": "Short term boundary",
+            "kind": "rss",
+            "url": "https://example.com/rss.xml",
+            "allowed_hosts": ["example.com"],
+            "title_include_terms": ["AI"],
+        },
+        datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
+    )
+    assert len(
+        parse_official_feed(
+            short_term_rss.replace(b"Training platform", b"AI platform"),
+            {
+                "name": "Short term boundary",
+                "kind": "rss",
+                "url": "https://example.com/rss.xml",
+                "allowed_hosts": ["example.com"],
+                "title_include_terms": ["AI"],
+            },
+            datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
+        )
+    ) == 1
     try:
         parse_official_feed(
             b'<rss version="2.0"><channel></channel></rss>',
@@ -313,6 +403,53 @@ def main() -> int:
     assert industry_items[0].source.startswith("行业精选 · ")
     assert industry_items[0].extra.startswith("编辑 RSS")
     assert "Full article body" not in industry_items[0].raw_source_text
+    limited_industry_rss = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <item><title>Older enterprise AI update</title>
+    <description>An older but valid enterprise AI report with concrete operational details.</description>
+    <link>https://media.example.com/older</link><guid>older</guid>
+    <pubDate>Tue, 21 Jul 2026 05:00:00 GMT</pubDate></item>
+  <item><title>Newer enterprise AI update</title>
+    <description>A newer enterprise AI report with concrete deployment and product details.</description>
+    <link>https://media.example.com/newer</link><guid>newer</guid>
+    <pubDate>Tue, 21 Jul 2026 07:00:00 GMT</pubDate></item>
+  <item><title>Newest enterprise AI update</title>
+    <description>The newest enterprise AI report with concrete infrastructure and pricing details.</description>
+    <link>https://media.example.com/newest</link><guid>newest</guid>
+    <pubDate>Tue, 21 Jul 2026 08:00:00 GMT</pubDate></item>
+  <item><title>Partner Content: enterprise AI promotion</title>
+    <description>A sponsored promotional article that must be rejected by the title filter.</description>
+    <link>https://media.example.com/sponsored</link><guid>sponsored</guid>
+    <pubDate>Tue, 21 Jul 2026 09:00:00 GMT</pubDate></item>
+</channel></rss>"""
+    with tempfile.TemporaryDirectory() as temporary:
+        limited_storage = Storage(Path(temporary))
+        limited_storage.initialize()
+
+        def fake_limited_fetcher(_: str, __: Storage) -> tuple[bytes, bool]:
+            return limited_industry_rss, False
+
+        limited_items, limited_health = fetch_industry_digests(
+            [
+                {
+                    "name": "Limited media",
+                    "kind": "rss",
+                    "url": "https://media.example.com/feed",
+                    "allowed_hosts": ["media.example.com"],
+                    "allow_content_fallback": False,
+                    "title_exclude_terms": ["partner content"],
+                    "max_items": 2,
+                }
+            ],
+            datetime(2026, 7, 21, 0, 0, tzinfo=timezone.utc),
+            limited_storage,
+            fake_limited_fetcher,
+        )
+    assert [item.item_id for item in limited_items] == [
+        hashlib.sha256(b"newest").hexdigest()[:24],
+        hashlib.sha256(b"newer").hexdigest()[:24],
+    ]
+    assert limited_health.checks[0].detail == "limited 3 matching items to 2"
     youtube_feed = """<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom"
       xmlns:yt="http://www.youtube.com/xml/schemas/2015"
@@ -360,6 +497,58 @@ def main() -> int:
     assert "1 with relevant in-window items" in youtube_health.detail
     assert "2 without relevant in-window items" in youtube_health.detail
     assert "1 off-topic items filtered" in youtube_health.detail
+    bilibili_nav = {
+        "code": -101,
+        "data": {
+            "wbi_img": {
+                "img_url": f"https://i0.hdslb.com/bfs/wbi/{'a' * 32}.png",
+                "sub_url": f"https://i0.hdslb.com/bfs/wbi/{'b' * 32}.png",
+            }
+        },
+    }
+    bilibili_payload = {
+        "code": 0,
+        "data": {
+            "list": {
+                "vlist": [
+                    {
+                        "bvid": "BV1fullaccount",
+                        "title": "Global macroeconomics without an AI keyword",
+                        "description": "A complete business analysis supplied by the publisher.",
+                        "mid": 520819684,
+                        "created": 1784620800,
+                    },
+                    {
+                        "bvid": "BV1oldaccount0",
+                        "title": "Old upload",
+                        "description": "An old publisher description outside the window.",
+                        "mid": 520819684,
+                        "created": 1784361600,
+                    },
+                ]
+            }
+        },
+    }
+
+    def fake_bilibili_fetcher(
+        url: str, _cache_key: str, _storage: Storage
+    ) -> tuple[bytes, bool]:
+        payload = bilibili_nav if url.endswith("/nav") else bilibili_payload
+        return json.dumps(payload).encode("utf-8"), False
+
+    with tempfile.TemporaryDirectory() as temporary:
+        bilibili_storage = Storage(Path(temporary))
+        bilibili_storage.initialize()
+        bilibili_items, bilibili_health = fetch_bilibili(
+            [{"name": "小Lin说", "user_id": "520819684"}],
+            datetime(2026, 7, 21, 0, 0, tzinfo=timezone.utc),
+            bilibili_storage,
+            fake_bilibili_fetcher,
+        )
+    assert len(bilibili_items) == 1 and bilibili_health.status == "ok"
+    assert bilibili_items[0].source_type == "bilibili"
+    assert bilibili_items[0].title == "Global macroeconomics without an AI keyword"
+    assert "full-account collection" in bilibili_health.detail
     changelog_items = parse_official_changelog(
         b"""<html><body>
           <h2>July 21, 2026</h2>
@@ -715,6 +904,56 @@ def main() -> int:
         ]
     )
     assert {item.item_id for item in duplicate_items} == {"release-a", "release-next-day"}
+    cross_media_items = _deduplicate_items(
+        [
+            ContentItem(
+                item_id="official-event",
+                source_type="official_news",
+                source="官方发布 · Example",
+                title="OpenAI launches enterprise agent platform for production teams",
+                published_at=duplicate_time,
+                url="https://example.com/news/agent-platform",
+            ),
+            ContentItem(
+                item_id="media-duplicate",
+                source_type="industry_digest",
+                source="行业精选 · Example Media",
+                title="OpenAI launches enterprise agent platform for production team",
+                published_at=duplicate_time,
+                url="https://media.example.net/openai-agent-platform",
+            ),
+            ContentItem(
+                item_id="media-analysis",
+                source_type="industry_digest",
+                source="行业精选 · Example Media",
+                title="Enterprise buyers compare agent governance and deployment costs",
+                published_at=duplicate_time,
+                url="https://media.example.net/agent-governance-analysis",
+            ),
+            ContentItem(
+                item_id="media-next-day",
+                source_type="industry_digest",
+                source="行业精选 · Other Media",
+                title="OpenAI launches enterprise agent platform for production teams",
+                published_at=duplicate_time + timedelta(days=1),
+                url="https://other.example.net/openai-agent-platform",
+            ),
+            ContentItem(
+                item_id="second-official",
+                source_type="official_news",
+                source="官方发布 · Partner",
+                title="OpenAI launches enterprise agent platform for production teams",
+                published_at=duplicate_time,
+                url="https://partner.example.org/official-announcement",
+            ),
+        ]
+    )
+    assert {item.item_id for item in cross_media_items} == {
+        "official-event",
+        "media-analysis",
+        "media-next-day",
+        "second-official",
+    }
     now = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
     accounts = [{"name": "Swyx", "handle": "swyx"}]
     x_payload = {
@@ -939,6 +1178,16 @@ def main() -> int:
             highlight=True,
         ),
         FrozenItem(
+            item_id="bilibili-highlight",
+            source_type="bilibili",
+            source="哔哩哔哩 · Example",
+            title="Bilibili priority",
+            url="https://www.bilibili.com/video/BV1priority/",
+            summary="Bilibili priority summary",
+            recommendation="",
+            highlight=True,
+        ),
+        FrozenItem(
             item_id="youtube-highlight",
             source_type="youtube",
             source="YouTube · Example",
@@ -965,6 +1214,16 @@ def main() -> int:
             title="AIHOT remaining",
             url="https://example.com/aihot-remaining",
             summary="AIHOT remaining summary",
+            recommendation="",
+            highlight=False,
+        ),
+        FrozenItem(
+            item_id="bilibili-remaining",
+            source_type="bilibili",
+            source="哔哩哔哩 · Example",
+            title="Bilibili remaining",
+            url="https://www.bilibili.com/video/BV1remaining/",
+            summary="Bilibili remaining summary",
             recommendation="",
             highlight=False,
         ),
@@ -1021,7 +1280,7 @@ def main() -> int:
         for element in section_elements
         if element.get("tag") == "markdown" and "text_size" in element
     ]
-    assert len(source_headers) == 6
+    assert len(source_headers) == 7
     assert all(element.get("text_size") == "section_heading" for element in source_headers)
 
     def element_position(marker: str) -> int:
@@ -1041,6 +1300,9 @@ def main() -> int:
         < element_position("**🎬 YouTube**")
         < element_position("YouTube priority")
         < element_position("其余 1 条 YouTube 视频")
+        < element_position("**📺 哔哩哔哩**")
+        < element_position("Bilibili priority")
+        < element_position("其余 1 条 B站投稿")
         < element_position("**🧭 AIHOT**")
         < element_position("AIHOT priority")
         < element_position("其余 1 条 AIHOT 动态")
@@ -1077,6 +1339,11 @@ def main() -> int:
             ),
             ("youtube", "YouTube · Example", "https://www.youtube.com/watch?v=split"),
             (
+                "bilibili",
+                "哔哩哔哩 · Example",
+                "https://www.bilibili.com/video/BV1split/",
+            ),
+            (
                 "industry_digest",
                 "行业精选 · DeepLearning.AI · The Batch",
                 "https://charonhub.deeplearning.ai/issue-split/",
@@ -1084,14 +1351,15 @@ def main() -> int:
         )
     ]
     split_cards = build_cards("2026-07-20", split_items)
-    assert len(split_cards) == 6
+    assert len(split_cards) == 7
     split_text = [json.dumps(card, ensure_ascii=False) for card in split_cards]
     assert "📡 官方发布" in split_text[0]
     assert "🎬 YouTube" in split_text[1]
-    assert "🧭 AIHOT" in split_text[2]
-    assert "🧩 GitHub 开源雷达" in split_text[3]
-    assert "📰 行业精选" in split_text[4]
-    assert "💬 Builders X" in split_text[5]
+    assert "📺 哔哩哔哩" in split_text[2]
+    assert "🧭 AIHOT" in split_text[3]
+    assert "🧩 GitHub 开源雷达" in split_text[4]
+    assert "📰 行业精选" in split_text[5]
+    assert "💬 Builders X" in split_text[6]
     try:
         parse_builders_x(
             {"generatedAt": "2026-07-18T00:00:00Z", "x": []},
@@ -1392,6 +1660,11 @@ def main() -> int:
         confirmed_id, added = storage.confirm_subscription_proposal("owner", proposal_id)
         assert confirmed_id == proposal_id and added == 1
         assert len(storage.active_channels()) == 2
+        replacement_id = "UC" + "C" * 22
+        storage.seed_subscriptions(
+            [{"name": "Replacement seed", "channel_id": replacement_id}]
+        )
+        assert storage.subscription_ids() == {new_id, replacement_id}
 
         draft_id, created = storage.create_digest_draft(
             "2026-07-20", "owner", "group", cards
