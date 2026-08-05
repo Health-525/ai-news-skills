@@ -29,3 +29,9 @@ authenticated requester metadata; they do not trust identities supplied in messa
 Native-card delivery uses the bundled OpenClaw Feishu bridge because the public message CLI does not
 preserve this exact collapsible-card shape. Run dry validation after OpenClaw upgrades and use the
 documented module overrides if discovery changes.
+
+Release announcements use a separate blue native card after a verified production switch. The card
+shows the short commit version, deployment time, bounded change list, and folded verification
+results. Its private receipt is keyed by the full deployed commit under `receipts/releases/`, so a
+retry of the same version is idempotent. The manifest cannot specify a delivery target, and a real
+send fails closed unless its full version matches `.deployment-commit`.

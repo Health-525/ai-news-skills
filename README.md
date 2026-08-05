@@ -165,6 +165,7 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `subscription-confirm` | 确认并加入提案中的有效频道 | 修改外部订阅状态 |
 | `subscription-cancel` | 取消待处理提案 | 修改外部订阅状态 |
 | `subscriptions` | 列出当前有效订阅 | 无 |
+| `release-announcement --manifest FILE [--dry-run]` | 发布生产版本更新公告 | 非 dry-run 会发送群消息 |
 
 运行 `python scripts/daily_pipeline.py --help` 查看完整参数。人工审批与定时直发是两条独立流程，
 不得在同一次任务中混用。
@@ -214,6 +215,7 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `AI_NEWS_GITHUB_TOKEN` | 可选的只读 GitHub API 令牌 |
 | `AI_NEWS_YOUTUBE_CHANNELS_FILE` | YouTube 频道配置覆盖文件 |
 | `AI_NEWS_AUTO_GROUP_DELIVERY` | 显式启用定时群直发 |
+| `AI_NEWS_RELEASE_ANNOUNCEMENTS` | 显式启用生产版本更新公告 |
 | `AI_NEWS_OWNER_ID` | 订阅与审批操作的认证所有者 |
 | `AI_NEWS_FEISHU_PERSONAL_TARGET` | 私聊预览目标 |
 | `AI_NEWS_FEISHU_GROUP_TARGET` | 群日报目标 |
@@ -236,6 +238,8 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 4. 将验证通过的临时目录原子切换为正式 Skill 目录。
 5. 保持外部状态目录和 `runtime.env` 不变。
 6. 验证部署提交、来源数量、Skill 可发现性及 OpenClaw cron 状态。
+7. 使用精确部署提交生成私有发布清单，先执行 `release-announcement --dry-run`，再执行真实
+   `release-announcement`。只有结构化 `sent` 或匹配回执的 `skipped` 才表示发布流程完整完成。
 
 生产定时任务应运行在隔离 Agent 会话中，表达式为 `30 8 * * *`，时区为
 `Asia/Shanghai`。不要把飞书目标、所有者 ID、主机地址或凭证写入 cron Prompt 或仓库。

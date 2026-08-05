@@ -27,6 +27,7 @@ RUNTIME_ENV_KEYS = {
     "AI_NEWS_GITHUB_TOKEN",
     "AI_NEWS_OFFICIAL_SOURCES_FILE",
     "AI_NEWS_OWNER_ID",
+    "AI_NEWS_RELEASE_ANNOUNCEMENTS",
     "OPENCLAW_FEISHU_ACCOUNT_ID",
 }
 PRIMARY_WINDOW_HOURS = 24
@@ -60,6 +61,15 @@ def load_runtime_env() -> None:
 
 def scheduled_group_delivery_enabled() -> bool:
     return os.environ.get("AI_NEWS_AUTO_GROUP_DELIVERY", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def release_announcements_enabled() -> bool:
+    return os.environ.get("AI_NEWS_RELEASE_ANNOUNCEMENTS", "").strip().lower() in {
         "1",
         "true",
         "yes",
