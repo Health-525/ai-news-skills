@@ -15,6 +15,11 @@ from daily_pipeline import _handle_scheduled_group
 from radar.approval import build_approval_card
 from radar.delivery import _parse_bridge_payload, send_group_cards, send_personal_cards
 from radar.digest import FrozenItem, build_card, build_cards, validate_frozen_digest
+from radar.github_radar import (
+    GitHubRateLimitError,
+    fetch_github_trending,
+    load_github_radar_config,
+)
 from radar.models import ContentItem
 from radar.official_news import (
     OfficialSource,
@@ -29,6 +34,7 @@ from radar.official_news import (
 from radar.url_utils import canonical_url
 from radar.source_material import source_text_status
 from radar.sources import (
+    _deduplicate_items,
     fetch_industry_digests,
     fetch_youtube,
     load_builders_x_accounts,
@@ -58,6 +64,17 @@ def main() -> int:
         Path(__file__).resolve().parents[1] / "references" / "official-news-sources.json"
     )
     assert len(official_sources) == 46
+    github_config = load_github_radar_config(
+        Path(__file__).resolve().parents[1] / "references" / "github-radar.json"
+    )
+    assert github_config["topics"] == [
+        "ai-agents",
+        "artificial-intelligence",
+        "generative-ai",
+        "large-language-models",
+        "model-context-protocol",
+    ]
+    assert github_config["max_items"] == 12
     aws_whats_new = next(
         source for source in official_sources if source["name"] == "AWS What's New · AI"
     )
@@ -89,6 +106,12 @@ def main() -> int:
             "Databricks AI",
         }
     )
+    runway_source = next(
+        source for source in official_sources if source["name"] == "Runway"
+    )
+    assert runway_source["index_url"] == "https://runway.com/research"
+    assert runway_source["article_path_prefix"] == "/research/"
+    assert "/research/publications" in runway_source["excluded_path_prefixes"]
     assert COLLECTION_LOOKBACK_HOURS == 96 > PRIMARY_WINDOW_HOURS == 24
     stable_release_sources = [
         source for source in official_sources if source.get("stable_releases_only")
@@ -151,6 +174,21 @@ def main() -> int:
     assert len(parsed_official) == 1
     assert parsed_official[0].source_type == "official_news"
     assert parsed_official[0].raw_source_text.startswith("A detailed official")
+    try:
+        parse_official_feed(
+            b'<rss version="2.0"><channel></channel></rss>',
+            {
+                "name": "Empty Feed",
+                "kind": "rss",
+                "url": "https://example.com/empty.xml",
+                "allowed_hosts": ["example.com"],
+            },
+            datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
+        )
+    except ValueError as error:
+        assert str(error) == "official feed contains no entries"
+    else:
+        raise AssertionError("empty official feed must fail closed")
     release_notes_rss = b"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
   <item>
@@ -221,18 +259,25 @@ def main() -> int:
     <title>{title}</title>
     <published>{published}</published>
     <link rel="alternate" href="https://www.youtube.com/watch?v={video_id}"/>
-    <media:group><media:description>A useful company AI engineering update.</media:description></media:group>
+    <media:group><media:description>{description}</media:description></media:group>
   </entry>
 </feed>"""
     active_channel_id = "UC" + "A" * 22
     quiet_channel_id = "UC" + "B" * 22
+    off_topic_channel_id = "UC" + "C" * 22
 
     def fake_youtube_fetcher(url: str, _: Storage) -> tuple[bytes, bool]:
         active = url.endswith(active_channel_id)
+        off_topic = url.endswith(off_topic_channel_id)
         return youtube_feed.format(
-            video_id="active-video" if active else "old-video",
-            title="Active update" if active else "Old update",
-            published="2026-07-21T08:00:00+00:00" if active else "2026-07-19T08:00:00+00:00",
+            video_id=("active-video" if active else "off-topic-video" if off_topic else "old-video"),
+            title=("Active AI update" if active else "A cooking tutorial" if off_topic else "Old AI update"),
+            published=("2026-07-21T08:00:00+00:00" if active or off_topic else "2026-07-19T08:00:00+00:00"),
+            description=(
+                "A useful company AI engineering update."
+                if not off_topic
+                else "A detailed recipe for a family dinner."
+            ),
         ).encode("utf-8"), False
 
     with tempfile.TemporaryDirectory() as temporary:
@@ -242,14 +287,16 @@ def main() -> int:
             [
                 {"name": "Active", "channel_id": active_channel_id},
                 {"name": "Quiet", "channel_id": quiet_channel_id},
+                {"name": "Off topic", "channel_id": off_topic_channel_id},
             ],
             datetime(2026, 7, 21, 0, 0, tzinfo=timezone.utc),
             youtube_storage,
             fake_youtube_fetcher,
         )
     assert len(youtube_items) == 1 and youtube_health.status == "ok"
-    assert "1 with in-window items" in youtube_health.detail
-    assert "1 without in-window items" in youtube_health.detail
+    assert "1 with relevant in-window items" in youtube_health.detail
+    assert "2 without relevant in-window items" in youtube_health.detail
+    assert "1 off-topic items filtered" in youtube_health.detail
     changelog_items = parse_official_changelog(
         b"""<html><body>
           <h2>July 21, 2026</h2>
@@ -268,6 +315,21 @@ def main() -> int:
     assert len(changelog_items) == 1
     assert changelog_items[0].extra == "官方 Changelog"
     assert "structured tool calling" in changelog_items[0].raw_source_text
+    try:
+        parse_official_changelog(
+            b"<html><body><h2>Release notes</h2><p>No dated entries.</p></body></html>",
+            {
+                "name": "Broken Changelog",
+                "kind": "html_changelog",
+                "url": "https://example.com/changelog-broken",
+                "allowed_hosts": ["example.com"],
+            },
+            datetime(2026, 7, 21, 0, 0, tzinfo=timezone.utc),
+        )
+    except ValueError as error:
+        assert str(error) == "official changelog has no parseable dated entries"
+    else:
+        raise AssertionError("undated official changelog must fail closed")
     overlap_changelog_items = parse_official_changelog(
         b"""<html><body>
           <h2>July 23, 2026</h2>
@@ -467,6 +529,7 @@ def main() -> int:
             {
                 "id": "video-1",
                 "source_type": "youtube",
+                "recency_status": "current",
                 "source": "YouTube · Example",
                 "title": "Example update",
                 "url": "https://www.youtube.com/watch?v=video-1",
@@ -478,6 +541,7 @@ def main() -> int:
             {
                 "id": "item-2",
                 "source_type": "aihot",
+                "recency_status": "recovered",
                 "source": "AIHOT · Example",
                 "title": "Unavailable update",
                 "url": "https://example.com/item-2",
@@ -503,6 +567,91 @@ def main() -> int:
     items = validate_frozen_digest(source, markdown)
     cards = build_cards("2026-07-20", items)
     assert len(items) == 2 and len(cards) == 1
+    card_intro = cards[0]["body"]["elements"][0]["content"]
+    assert "本卡 2 条信号" in card_intro and "当期 1 · 补录 1" in card_intro
+
+    numeric_source = {
+        "items": [
+            {
+                "id": "numeric-1",
+                "source_type": "industry_digest",
+                "source": "行业精选 · Example",
+                "title": "Startup raises $20 million",
+                "published_at": "2026-07-20T08:00:00+00:00",
+                "recency_status": "current",
+                "url": "https://example.com/numeric-1",
+                "source_text_status": "available",
+                "source_text": "The startup raised $20 million after eighteen months.",
+                "unavailable_reason": "",
+                "recommendation": "",
+            }
+        ]
+    }
+    numeric_markdown = """# AI 前哨 | 2026-07-20
+
+### 1. [Startup raises $20 million](https://example.com/numeric-1)
+- 来源：行业精选 · Example
+- 重点：否
+- 来源摘要：该公司在 18 个月后融资 2000 万美元。
+"""
+    validate_frozen_digest(numeric_source, numeric_markdown)
+    unsupported_numeric_source = json.loads(json.dumps(numeric_source))
+    unsupported_numeric_source["items"][0]["title"] = "Startup raises $7.9 million"
+    unsupported_numeric_source["items"][0]["source_text"] = (
+        "The product is used by 5.3 million people around the world."
+    )
+    unsupported_numeric_markdown = numeric_markdown.replace(
+        "Startup raises $20 million", "Startup raises $7.9 million"
+    ).replace("18 个月后融资 2000 万美元", "获得 790 万美元融资")
+    try:
+        validate_frozen_digest(unsupported_numeric_source, unsupported_numeric_markdown)
+    except ValueError as error:
+        assert "unsupported numeric evidence" in str(error)
+    else:
+        raise AssertionError("title-only financing evidence was accepted")
+    unsupported_chinese_source = json.loads(json.dumps(numeric_source))
+    unsupported_chinese_source["items"][0]["title"] = "九项测试全面提升"
+    unsupported_chinese_source["items"][0]["source_text"] = "两项基准测试取得提升。"
+    unsupported_chinese_markdown = numeric_markdown.replace(
+        "Startup raises $20 million", "九项测试全面提升"
+    ).replace("该公司在 18 个月后融资 2000 万美元", "该模型在九项测试中全面提升")
+    try:
+        validate_frozen_digest(unsupported_chinese_source, unsupported_chinese_markdown)
+    except ValueError as error:
+        assert "unsupported numeric evidence" in str(error)
+    else:
+        raise AssertionError("title-only benchmark count was accepted")
+
+    duplicate_time = datetime(2026, 7, 21, 8, 0, tzinfo=timezone.utc)
+    duplicate_items = _deduplicate_items(
+        [
+            ContentItem(
+                item_id="release-a",
+                source_type="official_news",
+                source="官方发布 · Example A",
+                title="Same product availability update",
+                published_at=duplicate_time,
+                url="https://docs.example.com/releases/a",
+            ),
+            ContentItem(
+                item_id="release-b",
+                source_type="official_news",
+                source="官方发布 · Example B",
+                title="Same product availability update",
+                published_at=duplicate_time,
+                url="https://docs.example.com/releases/b",
+            ),
+            ContentItem(
+                item_id="release-next-day",
+                source_type="official_news",
+                source="官方发布 · Example A",
+                title="Same product availability update",
+                published_at=duplicate_time + timedelta(days=1),
+                url="https://docs.example.com/releases/c",
+            ),
+        ]
+    )
+    assert {item.item_id for item in duplicate_items} == {"release-a", "release-next-day"}
     now = datetime(2026, 7, 22, 0, 0, tzinfo=timezone.utc)
     accounts = [{"name": "Swyx", "handle": "swyx"}]
     x_payload = {
@@ -585,6 +734,79 @@ def main() -> int:
         "no_signal": 0,
         "promotion": 1,
     }
+    github_record = {
+        "full_name": "example/agent-runtime",
+        "html_url": "https://github.com/example/agent-runtime",
+        "description": "A production-oriented runtime for reliable AI agents and tool execution.",
+        "created_at": "2026-07-29T00:00:00Z",
+        "pushed_at": "2026-08-05T00:00:00Z",
+        "stargazers_count": 1000,
+        "forks_count": 120,
+        "language": "Python",
+        "license": {"spdx_id": "Apache-2.0"},
+        "topics": ["ai-agents", "agent-runtime"],
+        "archived": False,
+        "fork": False,
+    }
+    test_github_config = {
+        "discovery_days": 45,
+        "bootstrap_days": 30,
+        "min_initial_stars": 500,
+        "min_initial_stars_per_day": 30,
+        "min_star_gain": 100,
+        "max_candidates_per_query": 20,
+        "max_items": 12,
+        "topics": ["ai-agents"],
+    }
+
+    def github_fetcher(_url: str, _storage: Storage) -> dict[str, object]:
+        return {"payload": {"items": [github_record]}, "cache_mode": "fresh"}
+
+    github_now = datetime(2026, 8, 5, 0, 30, tzinfo=timezone.utc)
+    with tempfile.TemporaryDirectory() as temporary:
+        github_storage = Storage(Path(temporary))
+        github_storage.initialize()
+        github_items, github_health = fetch_github_trending(
+            test_github_config, github_storage, github_now, github_fetcher
+        )
+        assert len(github_items) == 1 and github_health.status == "ok"
+        assert github_items[0].source_type == "github_trending"
+        assert "首次进入本地观察基线" in github_items[0].raw_source_text
+        assert github_items[0].dedup_identity.endswith("#trend-date=2026-08-05")
+    with tempfile.TemporaryDirectory() as temporary:
+        github_storage = Storage(Path(temporary))
+        github_storage.initialize()
+        github_storage.put_github_snapshot(
+            "example/agent-runtime",
+            "2026-08-04",
+            850,
+            100,
+            datetime(2026, 8, 4, 0, 0, tzinfo=timezone.utc),
+            datetime(2026, 8, 4, 0, 30, tzinfo=timezone.utc),
+        )
+        github_items, _ = fetch_github_trending(
+            test_github_config, github_storage, github_now, github_fetcher
+        )
+        assert len(github_items) == 1
+        assert "24.0 小时新增 150 Star" in github_items[0].raw_source_text
+    with tempfile.TemporaryDirectory() as temporary:
+        github_storage = Storage(Path(temporary))
+        github_storage.initialize()
+        rate_limited_config = dict(test_github_config)
+        rate_limited_config["topics"] = ["ai-agents", "generative-ai"]
+        rate_limit_calls = 0
+
+        def rate_limited_fetcher(_url: str, _storage: Storage) -> dict[str, object]:
+            nonlocal rate_limit_calls
+            rate_limit_calls += 1
+            raise GitHubRateLimitError("GitHub search rate limit exhausted")
+
+        github_items, github_health = fetch_github_trending(
+            rate_limited_config, github_storage, github_now, rate_limited_fetcher
+        )
+        assert not github_items and github_health.status == "error"
+        assert rate_limit_calls == 1
+        assert github_health.checks[1].detail == "skipped after rate limit"
     x_card = build_card(
         "2026-07-20",
         [
@@ -703,6 +925,26 @@ def main() -> int:
             recommendation="",
             highlight=False,
         ),
+        FrozenItem(
+            item_id="github-highlight",
+            source_type="github_trending",
+            source="GitHub 开源雷达 · Trending",
+            title="example/agent-runtime",
+            url="https://github.com/example/agent-runtime",
+            summary="GitHub trend priority summary",
+            recommendation="",
+            highlight=True,
+        ),
+        FrozenItem(
+            item_id="github-remaining",
+            source_type="github_trending",
+            source="GitHub 开源雷达 · Trending",
+            title="example/model-router",
+            url="https://github.com/example/model-router",
+            summary="GitHub trend remaining summary",
+            recommendation="",
+            highlight=False,
+        ),
     ]
     section_card = build_card("2026-07-20", section_items)
     section_elements = section_card["body"]["elements"]
@@ -716,7 +958,7 @@ def main() -> int:
         for element in section_elements
         if element.get("tag") == "markdown" and "text_size" in element
     ]
-    assert len(source_headers) == 5
+    assert len(source_headers) == 6
     assert all(element.get("text_size") == "section_heading" for element in source_headers)
 
     def element_position(marker: str) -> int:
@@ -739,6 +981,9 @@ def main() -> int:
         < element_position("**🧭 AIHOT**")
         < element_position("AIHOT priority")
         < element_position("其余 1 条 AIHOT 动态")
+        < element_position("**🧩 GitHub 开源雷达**")
+        < element_position("example/agent-runtime")
+        < element_position("其余 1 条 GitHub 热门项目")
         < element_position("**📰 行业精选**")
         < element_position("Industry digest priority")
         < element_position("其余 1 条 行业周报")
@@ -762,6 +1007,11 @@ def main() -> int:
             ("official_news", "官方发布 · Example", "https://example.com/news/split"),
             ("builders_x", "Builders X · Example", "https://x.com/example/status/3001"),
             ("aihot", "AIHOT · Example", "https://example.com/split-aihot"),
+            (
+                "github_trending",
+                "GitHub 开源雷达 · Trending",
+                "https://github.com/example/split",
+            ),
             ("youtube", "YouTube · Example", "https://www.youtube.com/watch?v=split"),
             (
                 "industry_digest",
@@ -771,13 +1021,14 @@ def main() -> int:
         )
     ]
     split_cards = build_cards("2026-07-20", split_items)
-    assert len(split_cards) == 5
+    assert len(split_cards) == 6
     split_text = [json.dumps(card, ensure_ascii=False) for card in split_cards]
     assert "📡 官方发布" in split_text[0]
     assert "🎬 YouTube" in split_text[1]
     assert "🧭 AIHOT" in split_text[2]
-    assert "📰 行业精选" in split_text[3]
-    assert "💬 Builders X" in split_text[4]
+    assert "🧩 GitHub 开源雷达" in split_text[3]
+    assert "📰 行业精选" in split_text[4]
+    assert "💬 Builders X" in split_text[5]
     try:
         parse_builders_x(
             {"generatedAt": "2026-07-18T00:00:00Z", "x": []},
@@ -901,6 +1152,8 @@ def main() -> int:
                 return dynamic_date_index, False
             if url == "https://example.com/slash-news":
                 return slash_date_index, False
+            if url == "https://example.com/empty-news":
+                return b"<html><body><p>No matching newsroom links.</p></body></html>", False
             if url == "https://example.com/news/model-two":
                 return html_article, False
             if url == "https://example.com/news/slash-model":
@@ -915,6 +1168,37 @@ def main() -> int:
         )
         assert len(html_items) == 1 and html_health.status == "ok"
         assert html_items[0].title == "Official Model Two"
+        html_health_payload = html_health.to_dict()
+        assert html_health_payload["checks"] == [
+            {
+                "name": "Example Lab",
+                "status": "ok",
+                "items": 1,
+                "cached": 0,
+                "detail": "",
+            }
+        ]
+        empty_index_source: OfficialSource = {
+            **html_source,
+            "name": "Empty Index Lab",
+            "index_url": "https://example.com/empty-news",
+        }
+        mixed_items, mixed_health = fetch_official_news(
+            [html_source, empty_index_source],
+            datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
+            storage,
+            fake_official_fetcher,
+        )
+        assert len(mixed_items) == 1 and mixed_health.status == "warn"
+        mixed_checks = mixed_health.to_dict()["checks"]
+        assert len(mixed_checks) == 2
+        assert mixed_checks[1] == {
+            "name": "Empty Index Lab",
+            "status": "error",
+            "items": 0,
+            "cached": 0,
+            "detail": "official index contains no matching article links",
+        }
         slash_date_source: OfficialSource = {
             **html_source,
             "name": "Slash Date Lab",
@@ -1100,7 +1384,7 @@ def main() -> int:
 
     diagnostics = doctor()
     assert diagnostics["status"] == "ok", json.dumps(diagnostics, ensure_ascii=False)
-    print(json.dumps({"status": "ok", "tests": 43}, ensure_ascii=False))
+    print(json.dumps({"status": "ok", "tests": 49}, ensure_ascii=False))
     return 0
 
 

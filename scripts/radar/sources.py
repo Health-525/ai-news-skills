@@ -17,6 +17,7 @@ from xml.etree import ElementTree as ET
 
 from .models import ContentItem, SourceHealth
 from .official_news import OfficialSource, fetch_official_news
+from .github_radar import GitHubRadarConfig, fetch_github_trending
 from .storage import Storage
 
 USER_AGENT = "ai-news-skills/1.0"
@@ -37,6 +38,12 @@ BUILDERS_X_TOPIC_RE = re.compile(
     r"openai|chatgpt|gemini|cursor|replit|vercel|prompts?|compute|open weights?|"
     r"foundation models?|neural|machine learning)\b|"
     r"人工智能|智能体|大模型|模型|推理|训练|评测|多模态|编程)",
+    re.IGNORECASE,
+)
+YOUTUBE_TOPIC_RE = re.compile(
+    BUILDERS_X_TOPIC_RE.pattern
+    + r"|\b(?:autonomous|robotics?|gpu|vector databases?|physical ai)\b|"
+    r"自动驾驶|机器人|向量数据库",
     re.IGNORECASE,
 )
 BUILDERS_X_SIGNAL_RE = re.compile(
@@ -175,7 +182,7 @@ def _fetch_youtube_channel(
     cutoff: datetime,
     storage: Storage,
     fetcher: Callable[[str, Storage], tuple[bytes, bool]] = _fetch_bytes,
-) -> tuple[list[ContentItem], bool]:
+) -> tuple[list[ContentItem], bool, int]:
     url = (
         "https://www.youtube.com/feeds/videos.xml?channel_id="
         + urllib.parse.quote(channel["channel_id"])
@@ -183,6 +190,7 @@ def _fetch_youtube_channel(
     body, cached = fetcher(url, storage)
     root = ET.fromstring(body)
     items: list[ContentItem] = []
+    filtered_off_topic = 0
     for entry in root.findall("atom:entry", NS):
         item_id = entry.findtext("yt:videoId", default="", namespaces=NS).strip()
         published_text = entry.findtext("atom:published", default="", namespaces=NS).strip()
@@ -192,20 +200,25 @@ def _fetch_youtube_channel(
         if published_at < cutoff:
             continue
         link = entry.find("atom:link", NS)
+        title = entry.findtext("atom:title", default="", namespaces=NS).strip()
+        description = entry.findtext(
+            "media:group/media:description", default="", namespaces=NS
+        ).strip()
+        if not YOUTUBE_TOPIC_RE.search(f"{title}\n{description}"):
+            filtered_off_topic += 1
+            continue
         items.append(
             ContentItem(
                 item_id=item_id,
                 source_type="youtube",
                 source=f"YouTube · {channel['name']}",
-                title=entry.findtext("atom:title", default="", namespaces=NS).strip(),
+                title=title,
                 published_at=published_at,
                 url=link.get("href", "") if link is not None else "",
-                raw_source_text=entry.findtext(
-                    "media:group/media:description", default="", namespaces=NS
-                ).strip(),
+                raw_source_text=description,
             )
         )
-    return items, cached
+    return items, cached, filtered_off_topic
 
 
 def fetch_youtube(
@@ -218,6 +231,7 @@ def fetch_youtube(
     failed = 0
     cached = 0
     channels_with_items = 0
+    filtered_off_topic = 0
     failed_channels: list[str] = []
     workers = min(6, len(channels))
     with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -229,20 +243,22 @@ def fetch_youtube(
         }
         for future in as_completed(futures):
             try:
-                channel_items, used_cache = future.result()
+                channel_items, used_cache, channel_filtered = future.result()
             except Exception:
                 failed += 1
                 failed_channels.append(futures[future]["name"])
                 continue
             items.extend(channel_items)
             cached += int(used_cache)
+            filtered_off_topic += channel_filtered
             channels_with_items += int(bool(channel_items))
     status = "error" if failed == len(channels) else "partial" if failed else "ok"
     fetched = len(channels) - failed
     detail = (
         f"{len(channels)} configured channels; {fetched} fetched; "
-        f"{channels_with_items} with in-window items; "
-        f"{fetched - channels_with_items} without in-window items"
+        f"{channels_with_items} with relevant in-window items; "
+        f"{fetched - channels_with_items} without relevant in-window items; "
+        f"{filtered_off_topic} off-topic items filtered"
     )
     if failed_channels:
         detail += f"; unavailable: {', '.join(sorted(failed_channels))}"
@@ -499,11 +515,35 @@ def fetch_builders_x(
     return items, SourceHealth("builders_x", "ok", 1, 0, int(cached), detail)
 
 
+def _deduplicate_items(items: list[ContentItem]) -> list[ContentItem]:
+    unique: dict[str, ContentItem] = {}
+    seen_urls: set[str] = set()
+    seen_events: set[tuple[str, str, str]] = set()
+    for item in items:
+        if not item.item_id or not item.title or not item.url:
+            continue
+        url_key = item.dedup_identity
+        if url_key in seen_urls:
+            continue
+        if item.source_type in {"official_news", "industry_digest"}:
+            host = (urllib.parse.urlparse(item.url).hostname or "").casefold()
+            host = host.removeprefix("www.")
+            title_key = re.sub(r"\W+", " ", item.title.casefold()).strip()
+            event_key = (host, item.published_at.date().isoformat(), title_key)
+            if event_key in seen_events:
+                continue
+            seen_events.add(event_key)
+        seen_urls.add(url_key)
+        unique[item.key] = item
+    return sorted(unique.values(), key=lambda item: item.published_at, reverse=True)
+
+
 def collect_sources(
     channels: list[dict[str, str]],
     official_sources: list[OfficialSource],
     industry_digest_sources: list[OfficialSource],
     builders_x_accounts: list[dict[str, str]],
+    github_radar_config: GitHubRadarConfig,
     cutoff: datetime,
     storage: Storage,
 ) -> tuple[list[ContentItem], list[SourceHealth]]:
@@ -512,32 +552,28 @@ def collect_sources(
     )
     youtube_items, youtube_health = fetch_youtube(channels, cutoff, storage)
     aihot_items, aihot_health = fetch_aihot(cutoff, storage)
+    github_items, github_health = fetch_github_trending(github_radar_config, storage)
     industry_digest_items, industry_digest_health = fetch_industry_digests(
         industry_digest_sources, cutoff, storage
     )
     builders_x_items, builders_x_health = fetch_builders_x(
         builders_x_accounts, cutoff, storage
     )
-    unique: dict[str, ContentItem] = {}
-    seen_urls: set[str] = set()
-    for item in [
-        *official_items,
-        *youtube_items,
-        *aihot_items,
-        *industry_digest_items,
-        *builders_x_items,
-    ]:
-        if item.item_id and item.title and item.url:
-            url_key = item.dedup_identity
-            if url_key in seen_urls:
-                continue
-            seen_urls.add(url_key)
-            unique[item.key] = item
-    items = sorted(unique.values(), key=lambda item: item.published_at, reverse=True)
+    items = _deduplicate_items(
+        [
+            *official_items,
+            *youtube_items,
+            *aihot_items,
+            *github_items,
+            *industry_digest_items,
+            *builders_x_items,
+        ]
+    )
     return items, [
         official_health,
         youtube_health,
         aihot_health,
+        github_health,
         industry_digest_health,
         builders_x_health,
     ]

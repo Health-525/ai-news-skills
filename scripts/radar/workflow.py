@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .digest import build_cards, validate_frozen_digest
+from .github_radar import load_github_radar_config
 from .official_news import COLLECTION_LOOKBACK_HOURS, load_official_sources
 from .source_material import source_text_status
 from .sources import collect_sources, load_builders_x_accounts, load_channels
@@ -22,6 +23,8 @@ RUNTIME_ENV_KEYS = {
     "AI_NEWS_FEISHU_PERSONAL_TARGET",
     "AI_NEWS_FEISHU_GROUP_TARGET",
     "AI_NEWS_INDUSTRY_DIGEST_SOURCES_FILE",
+    "AI_NEWS_GITHUB_RADAR_FILE",
+    "AI_NEWS_GITHUB_TOKEN",
     "AI_NEWS_OFFICIAL_SOURCES_FILE",
     "AI_NEWS_OWNER_ID",
     "OPENCLAW_FEISHU_ACCOUNT_ID",
@@ -91,6 +94,15 @@ def industry_digest_sources_file() -> Path:
     )
 
 
+def github_radar_file() -> Path:
+    configured = os.environ.get("AI_NEWS_GITHUB_RADAR_FILE", "").strip()
+    return (
+        Path(configured).expanduser()
+        if configured
+        else skill_root() / "references" / "github-radar.json"
+    )
+
+
 def artifact_paths(date_str: str) -> dict[str, Path]:
     root = state_dir()
     reports = root / "reports"
@@ -155,6 +167,16 @@ def doctor() -> dict[str, object]:
             "ok",
             f"{len(industry_sources)} valid editorial {feed_label}",
         )
+    try:
+        github_config = load_github_radar_config(github_radar_file())
+    except ValueError as error:
+        add("github-radar", "error", str(error))
+    else:
+        add(
+            "github-radar",
+            "ok",
+            f"{len(github_config['topics'])} valid topics; max {github_config['max_items']} items",
+        )
     existing = _nearest_existing(state_dir())
     writable = existing.is_dir() and os.access(existing, os.W_OK)
     add(
@@ -215,6 +237,7 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
             channels = storage.active_channels()
             official_sources = load_official_sources(official_news_sources_file())
             industry_sources = load_official_sources(industry_digest_sources_file())
+            github_config = load_github_radar_config(github_radar_file())
             builders_x_accounts = load_builders_x_accounts(builders_x_accounts_file())
             now = datetime.now(timezone.utc)
             cutoff = now - timedelta(hours=PRIMARY_WINDOW_HOURS)
@@ -224,6 +247,7 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
                 official_sources,
                 industry_sources,
                 builders_x_accounts,
+                github_config,
                 collection_cutoff,
                 storage,
             )
@@ -277,6 +301,9 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
     official_news = sum(record["source_type"] == "official_news" for record in records)
     youtube = sum(record["source_type"] == "youtube" for record in records)
     aihot = sum(record["source_type"] == "aihot" for record in records)
+    github_trending = sum(
+        record["source_type"] == "github_trending" for record in records
+    )
     industry_digest = sum(
         record["source_type"] == "industry_digest" for record in records
     )
@@ -289,6 +316,7 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
         "official_news": official_news,
         "youtube": youtube,
         "aihot": aihot,
+        "github_trending": github_trending,
         "industry_digest": industry_digest,
         "builders_x": builders_x,
         "available": available,

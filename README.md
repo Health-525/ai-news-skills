@@ -36,7 +36,7 @@
 | --- | --- | --- |
 | 官方 Newsroom、API Changelog、稳定版 Releases | 每条记录独立证据，不跨来源补全事实 | 飞书原生卡片与超长内容自动拆分 |
 | 国内外行业 RSS、YouTube RSS 描述 | 证据不足显式标记 `不可用` | 重试、哈希回执与幂等 `skipped` |
-| AIHOT 与 Builders X 本地白名单 | 冻结 Markdown 锁定模型输出边界 | 定时群直发与所有者审批双通道 |
+| AIHOT、GitHub 开源雷达与 Builders X 白名单 | 冻结 Markdown 锁定模型输出边界 | 定时群直发与所有者审批双通道 |
 | 24 小时滚动窗口与来源级健康检查 | 官方主张、编辑观点和社交动态分层归因 | `08:30 Asia/Shanghai` 隔离会话运行 |
 
 项目不获取字幕、音频或视频正文，不下载媒体，不执行转写，也不使用 S3 进行内容交接。
@@ -51,7 +51,8 @@ flowchart LR
         B["Industry RSS"]
         C["YouTube RSS<br/>Descriptions"]
         D["AIHOT"]
-        E["Builders X<br/>Allowlist"]
+        E["GitHub Radar<br/>Official API"]
+        N["Builders X<br/>Allowlist"]
     end
 
     subgraph TRUST["02 / TRUST PLANE"]
@@ -68,13 +69,13 @@ flowchart LR
         M["Feishu Group"]
     end
 
-    A & B & C & D & E --> F
+    A & B & C & D & E & N --> F
     F --> G --> H --> I --> J --> K --> L --> M
 
     classDef signal fill:#0f172a,stroke:#38bdf8,color:#f8fafc,stroke-width:2px
     classDef trust fill:#052e2b,stroke:#2dd4bf,color:#f0fdfa,stroke-width:2px
     classDef delivery fill:#431407,stroke:#fb923c,color:#fff7ed,stroke-width:2px
-    class A,B,C,D,E signal
+    class A,B,C,D,E,N signal
     class F,G,H,I,J trust
     class K,L,M delivery
 ```
@@ -174,6 +175,7 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | --- | --- |
 | `references/official-news-sources.json` | 官方 RSS、Changelog、Newsroom、GitHub Releases 与一手接口 |
 | `references/industry-digest-sources.json` | 公司导向的行业与编辑型 RSS |
+| `references/github-radar.json` | GitHub AI 主题、发现窗口与热度阈值 |
 | `references/youtube-channels.json` | 初始 YouTube 频道种子列表 |
 | `references/builders-x-accounts.json` | Builders X 本地账户白名单 |
 
@@ -208,6 +210,8 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `AI_NEWS_STATE_DIR` | 外部私有状态目录 |
 | `AI_NEWS_OFFICIAL_SOURCES_FILE` | 官方来源配置覆盖文件 |
 | `AI_NEWS_INDUSTRY_DIGEST_SOURCES_FILE` | 行业 RSS 配置覆盖文件 |
+| `AI_NEWS_GITHUB_RADAR_FILE` | GitHub 开源雷达配置覆盖文件 |
+| `AI_NEWS_GITHUB_TOKEN` | 可选的只读 GitHub API 令牌 |
 | `AI_NEWS_YOUTUBE_CHANNELS_FILE` | YouTube 频道配置覆盖文件 |
 | `AI_NEWS_AUTO_GROUP_DELIVERY` | 显式启用定时群直发 |
 | `AI_NEWS_OWNER_ID` | 订阅与审批操作的认证所有者 |

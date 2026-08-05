@@ -331,13 +331,10 @@
   {
     "name": "Runway",
     "kind": "html_index",
-    "index_url": "https://runway.com/news",
-    "article_path_prefix": "/news/",
+    "index_url": "https://runway.com/research",
+    "article_path_prefix": "/research/",
     "excluded_path_prefixes": [
-      "/news/customers",
-      "/news/research",
-      "/news/company-news",
-      "/news/engineering"
+      "/research/publications"
     ],
     "allowed_hosts": ["runway.com"],
     "title_include_terms": [

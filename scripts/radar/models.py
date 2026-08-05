@@ -27,11 +27,31 @@ class ContentItem:
     @property
     def dedup_identity(self) -> str:
         normalized = canonical_url(self.url)
+        if self.source_type == "github_trending":
+            return f"{normalized}#trend-date={self.published_at.date().isoformat()}"
         if self.extra == "官方 Release Notes":
             return f"{normalized}#entry={self.item_id}"
         if self.extra == "官方 Changelog":
             return f"{normalized}#date={self.published_at.date().isoformat()}"
         return normalized
+
+
+@dataclass(frozen=True, slots=True)
+class SourceCheck:
+    name: str
+    status: str
+    items: int
+    cached: int = 0
+    detail: str = ""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "status": self.status,
+            "items": self.items,
+            "cached": self.cached,
+            "detail": self.detail,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,9 +62,10 @@ class SourceHealth:
     failed: int
     cached: int
     detail: str = ""
+    checks: tuple[SourceCheck, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "source": self.source,
             "status": self.status,
             "fetched": self.fetched,
@@ -52,3 +73,6 @@ class SourceHealth:
             "cached": self.cached,
             "detail": self.detail,
         }
+        if self.checks:
+            payload["checks"] = [check.to_dict() for check in self.checks]
+        return payload
