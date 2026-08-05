@@ -15,7 +15,7 @@ from typing import Callable, NotRequired, TypedDict
 from xml.etree import ElementTree as ET
 from zoneinfo import ZoneInfo
 
-from .models import ContentItem, SourceHealth
+from .models import ContentItem, SourceCheck, SourceHealth
 from .storage import Storage
 from .url_utils import canonical_url, normalized_host
 
@@ -609,6 +609,8 @@ def parse_official_feed(
         entries = [child for child in root if _local_name(child.tag) == "entry"]
     else:
         raise ValueError("official feed is neither RSS nor Atom")
+    if not entries:
+        raise ValueError("official feed contains no entries")
 
     allowed_hosts = {str(host) for host in source["allowed_hosts"]}
     items: list[ContentItem] = []
@@ -692,6 +694,8 @@ def parse_official_changelog(
     window_end = cutoff + timedelta(hours=COLLECTION_LOOKBACK_HOURS)
     current_date: datetime | None = None
     chunks_by_date: dict[str, list[str]] = {}
+    saw_dated_entry = False
+    saw_in_window_date = False
     for row in table_parser.rows:
         dated_cells = [
             (index, parsed)
@@ -700,9 +704,11 @@ def parse_official_changelog(
         ]
         if not dated_cells:
             continue
+        saw_dated_entry = True
         date_index, (published_at, _) = dated_cells[0]
         if not cutoff.date() <= published_at.date() <= window_end.date():
             continue
+        saw_in_window_date = True
         date_key = published_at.date().isoformat()
         chunks = chunks_by_date.setdefault(date_key, [])
         for index, cell in enumerate(row):
@@ -716,7 +722,10 @@ def parse_official_changelog(
     for tag, text in parser.events:
         published = _changelog_date(text, cutoff) if tag in date_tags and len(text) <= 48 else None
         if published is not None:
+            saw_dated_entry = True
             published_at, _ = published
+            if cutoff.date() <= published_at.date() <= window_end.date():
+                saw_in_window_date = True
             current_date = (
                 published_at
                 if cutoff.date() <= published_at.date() <= window_end.date()
@@ -750,6 +759,10 @@ def parse_official_changelog(
                 extra="官方 Changelog",
             )
         )
+    if not saw_dated_entry:
+        raise ValueError("official changelog has no parseable dated entries")
+    if saw_in_window_date and not items:
+        raise ValueError("official changelog has no usable text for in-window entries")
     return items
 
 
@@ -1027,6 +1040,8 @@ def _parse_official_index(
     )
     parser.feed(index_body.decode("utf-8", errors="replace"))
     candidates = parser.candidates(max_candidates)
+    if not candidates:
+        raise ValueError("official index contains no matching article links")
     items: list[ContentItem] = []
     cached_requests = 0
     failed_articles = 0
@@ -1093,7 +1108,10 @@ def fetch_official_news(
     failed_sources: list[str] = []
     cached_requests = 0
     failed_articles = 0
+    source_checks: list[SourceCheck] = []
     for source in sources:
+        cached_before = cached_requests
+        article_failures_before = failed_articles
         try:
             kind = source["kind"]
             if kind in {
@@ -1131,8 +1149,39 @@ def fetch_official_news(
                 failed_articles += article_failures
             items.extend(source_items)
             fetched_sources += 1
-        except Exception:
-            failed_sources.append(str(source["name"]))
+            source_article_failures = failed_articles - article_failures_before
+            source_checks.append(
+                SourceCheck(
+                    name=str(source["name"]),
+                    status="warn" if source_article_failures else "ok",
+                    items=len(source_items),
+                    cached=cached_requests - cached_before,
+                    detail=(
+                        f"{source_article_failures} article metadata failures"
+                        if source_article_failures
+                        else "no in-window items"
+                        if not source_items
+                        else ""
+                    ),
+                )
+            )
+        except Exception as error:
+            source_name = str(source["name"])
+            failed_sources.append(source_name)
+            failure_detail = (
+                str(error)[:160]
+                if isinstance(error, ValueError) and str(error)
+                else type(error).__name__
+            )
+            source_checks.append(
+                SourceCheck(
+                    name=source_name,
+                    status="error",
+                    items=0,
+                    cached=cached_requests - cached_before,
+                    detail=failure_detail,
+                )
+            )
 
     if not fetched_sources:
         status = "error"
@@ -1154,4 +1203,5 @@ def fetch_official_news(
         len(failed_sources),
         cached_requests,
         detail,
+        tuple(source_checks),
     )

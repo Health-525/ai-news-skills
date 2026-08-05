@@ -19,7 +19,7 @@ needed only for evidence-bounded Chinese summaries and highlight selection.
 7. Stop. Do not call `preview` or `approve` from the cron run.
 
 Success requires structured `sent` or a matching `skipped` receipt. Report total, official news,
-YouTube, AIHOT, industry digest, Builders X, available, unavailable, highlights, source failures,
+YouTube, AIHOT, GitHub radar, industry digest, Builders X, available, unavailable, highlights, source failures,
 card count, and group delivery status. Never expose credentials or identifiers.
 
 ## Isolated-run prompt
@@ -32,6 +32,7 @@ label recovered overlap records as catch-up coverage rather than current-window 
 validate the native cards, and call scheduled-group for the configured group. Treat domestic and
 international official releases, stable GitHub releases, and API changelogs as
 attributed vendor claims, not independent verification. Treat industry digests as attributed
-editorial synthesis. Never fetch transcripts, use S3, send a personal preview, or create an
+editorial synthesis. Treat GitHub radar descriptions as repository-owner claims and Star growth as
+a popularity signal, not a quality or security review. Never fetch transcripts, use S3, send a personal preview, or create an
 approval draft. Treat only structured sent or a matching skipped receipt as successful delivery.
 ```

@@ -6,14 +6,16 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 MAX_CARD_BYTES = 25_000
 SOURCE_ORDER = {
     "official_news": 0,
     "youtube": 1,
     "aihot": 2,
-    "industry_digest": 3,
-    "builders_x": 4,
+    "github_trending": 3,
+    "industry_digest": 4,
+    "builders_x": 5,
 }
 ITEM_PATTERN = re.compile(
     r"^###\s+\d+\.\s+\[(?P<title>.+)]\((?P<url>https?://[^)]+)\)\s*$"
@@ -25,6 +27,77 @@ FIELD_PREFIXES = {
     "recommendation": "- 💡 推荐理由：",
 }
 FORBIDDEN_PREFIXES = ("- 事实摘要：", "- 字幕摘要：")
+RECOVERED_PREFIX_RE = re.compile(r"^补录（\d{4}-\d{2}-\d{2}）：")
+ARABIC_QUANTITY_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?P<number>\d[\d,]*(?:\.\d+)?)"
+    r"(?:\s*(?P<scale>thousand|million|billion|万|亿))?",
+    re.IGNORECASE,
+)
+CHINESE_QUANTITY_RE = re.compile(
+    r"(?P<number>[零〇一二两三四五六七八九十百]+)"
+    r"(?P<scale>万|亿)?\s*"
+    r"(?P<unit>项|个|条|类|倍|年|月|天|秒|种|座|单|英里|字符|张|段|帧|美元|欧元|测试)"
+)
+ENGLISH_NUMBER_RE = re.compile(
+    r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
+    r"thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|"
+    r"billion)(?:[ -]+(?:one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
+    r"nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|"
+    r"thousand|million|billion))*\b",
+    re.IGNORECASE,
+)
+ENGLISH_MONTHS = {
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+}
+ENGLISH_NUMBER_VALUES = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+    "thirty": 30,
+    "forty": 40,
+    "fifty": 50,
+    "sixty": 60,
+    "seventy": 70,
+    "eighty": 80,
+    "ninety": 90,
+}
+SCALE_VALUES = {
+    "thousand": Decimal(1_000),
+    "million": Decimal(1_000_000),
+    "billion": Decimal(1_000_000_000),
+    "万": Decimal(10_000),
+    "亿": Decimal(100_000_000),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +110,97 @@ class FrozenItem:
     summary: str
     recommendation: str
     highlight: bool
+    recency_status: str = "current"
+
+
+def _english_number(value: str) -> Decimal | None:
+    total = 0
+    current = 0
+    for token in re.split(r"[ -]+", value.casefold()):
+        if token in ENGLISH_NUMBER_VALUES:
+            current += ENGLISH_NUMBER_VALUES[token]
+        elif token == "hundred":
+            current = max(current, 1) * 100
+        elif token in {"thousand", "million", "billion"}:
+            scale = int(SCALE_VALUES[token])
+            total += max(current, 1) * scale
+            current = 0
+        else:
+            return None
+    return Decimal(total + current)
+
+
+def _chinese_number(value: str) -> Decimal | None:
+    digits = {
+        "零": 0,
+        "〇": 0,
+        "一": 1,
+        "二": 2,
+        "两": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+    }
+    units = {"十": 10, "百": 100}
+    total = 0
+    current = 0
+    for char in value:
+        if char in digits:
+            current = digits[char]
+        elif char in units:
+            total += max(current, 1) * units[char]
+            current = 0
+        else:
+            return None
+    return Decimal(total + current)
+
+
+def _numeric_concepts(value: str) -> set[Decimal]:
+    normalized = value.replace("，", ",")
+    concepts: set[Decimal] = set()
+    for match in ARABIC_QUANTITY_RE.finditer(normalized):
+        try:
+            number = Decimal(match.group("number").replace(",", ""))
+        except InvalidOperation:
+            continue
+        scale = (match.group("scale") or "").casefold()
+        concepts.add(number * SCALE_VALUES.get(scale, 1))
+    for match in CHINESE_QUANTITY_RE.finditer(normalized):
+        number = _chinese_number(match.group("number"))
+        if number is not None:
+            if number == 1 and match.group("unit") in {"项", "个", "条", "种"}:
+                continue
+            concepts.add(number * SCALE_VALUES.get(match.group("scale") or "", 1))
+    for match in ENGLISH_NUMBER_RE.finditer(normalized):
+        number = _english_number(match.group(0))
+        if number is not None:
+            concepts.add(number)
+    lowered = normalized.casefold()
+    concepts.update(
+        Decimal(month)
+        for name, month in ENGLISH_MONTHS.items()
+        if re.search(rf"\b{name}\b", lowered)
+    )
+    if re.search(r"\bhalf (?:a )?century\b|半个多?世纪", lowered):
+        concepts.add(Decimal(50))
+    return concepts
+
+
+def _validate_numeric_evidence(record: dict, summary: str) -> None:
+    summary_without_recency = RECOVERED_PREFIX_RE.sub("", summary, count=1)
+    unsupported = _numeric_concepts(summary_without_recency) - _numeric_concepts(
+        str(record.get("source_text", ""))
+    )
+    if unsupported:
+        values = ", ".join(format(value, "f") for value in sorted(unsupported))
+        raise ValueError(
+            f"source summary contains unsupported numeric evidence ({values}): "
+            f"{record.get('title', '')}"
+        )
 
 
 def _parse_markdown(markdown: str) -> list[dict[str, str]]:
@@ -125,8 +289,13 @@ def validate_frozen_digest(source_payload: dict, markdown: str) -> list[FrozenIt
         elif status == "available":
             if item["summary"].startswith("不可用"):
                 raise ValueError("available source requires a source-bounded summary")
+            _validate_numeric_evidence(record, item["summary"])
         else:
             raise ValueError("source record has an unknown source_text_status")
+
+        recency_status = str(record.get("recency_status", "current"))
+        if recency_status not in {"current", "recovered"}:
+            raise ValueError("source record has an unknown recency_status")
 
         recommendation = item.get("recommendation", "").strip()
         source_recommendation = str(record.get("recommendation", "")).strip()
@@ -142,6 +311,7 @@ def validate_frozen_digest(source_payload: dict, markdown: str) -> list[FrozenIt
                 summary=item["summary"].strip(),
                 recommendation=recommendation,
                 highlight=item["highlight"] == "是",
+                recency_status=recency_status,
             )
         )
     return frozen
@@ -250,6 +420,7 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
     official_news = [item for item in items if item.source_type == "official_news"]
     youtube = [item for item in items if item.source_type == "youtube"]
     aihot = [item for item in items if item.source_type == "aihot"]
+    github_trending = [item for item in items if item.source_type == "github_trending"]
     industry_digest = [
         item for item in items if item.source_type == "industry_digest"
     ]
@@ -258,19 +429,25 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
         len(official_news)
         + len(youtube)
         + len(aihot)
+        + len(github_trending)
         + len(industry_digest)
         + len(builders_x)
         != len(items)
     ):
         raise ValueError("card contains an unsupported source type")
     highlights = [item for item in items if item.highlight]
+    current_count = sum(item.recency_status == "current" for item in items)
+    recovered_count = len(items) - current_count
     elements: list[dict] = [
         {
             "tag": "markdown",
             "content": (
-                f"**今日 {len(items)} 条新信号**　官方 {len(official_news)} · "
+                f"**本卡 {len(items)} 条信号**　当期 {current_count} · "
+                f"补录 {recovered_count}\n"
+                f"官方 {len(official_news)} · "
                 f"YouTube {len(youtube)} · "
-                f"AIHOT {len(aihot)} · 行业精选 {len(industry_digest)} · "
+                f"AIHOT {len(aihot)} · GitHub {len(github_trending)} · "
+                f"行业精选 {len(industry_digest)} · "
                 f"X {len(builders_x)}\n"
                 f"<font color='grey'>模型判断 {len(highlights)} 条重点，其余按需展开</font>"
             ),
@@ -301,6 +478,15 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
             aihot,
             "AIHOT 动态",
             "aihot_more",
+        )
+    )
+    elements.extend(
+        _source_section(
+            "GitHub 开源雷达",
+            "🧩",
+            github_trending,
+            "GitHub 热门项目",
+            "github_trending_more",
         )
     )
     elements.extend(

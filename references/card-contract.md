@@ -6,8 +6,10 @@ or invented records.
 
 The maintained Feishu card displays:
 
-- total, official news, YouTube, AIHOT, industry digest, Builders X, and model-selected highlight counts;
-- source sections ordered as official news, YouTube, AIHOT, industry digest, then Builders X;
+- per-card total, current-window, recovered, official news, YouTube, AIHOT, GitHub radar, industry
+  digest, Builders X, and model-selected highlight counts;
+- source sections ordered as official news, YouTube, AIHOT, GitHub radar, industry digest, then
+  Builders X;
 - source section headers use the Feishu JSON 2.0 `heading` text size while item bodies retain the
   normal Markdown size;
 - model-selected highlights expanded first inside each source section;

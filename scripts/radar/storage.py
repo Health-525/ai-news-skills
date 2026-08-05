@@ -67,6 +67,17 @@ class Storage:
                     body BLOB NOT NULL,
                     fetched_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS github_repository_snapshots (
+                    repository TEXT NOT NULL,
+                    observed_date TEXT NOT NULL,
+                    stars INTEGER NOT NULL,
+                    forks INTEGER NOT NULL,
+                    pushed_at TEXT NOT NULL,
+                    captured_at TEXT NOT NULL,
+                    PRIMARY KEY (repository, observed_date)
+                );
+                CREATE INDEX IF NOT EXISTS idx_github_snapshots_repository
+                ON github_repository_snapshots (repository, observed_date DESC);
                 CREATE TABLE IF NOT EXISTS subscriptions (
                     channel_id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -145,6 +156,53 @@ class Storage:
                     fetched_at=excluded.fetched_at
                 """,
                 (url, etag, last_modified, body, datetime.now(timezone.utc).isoformat()),
+            )
+
+    def previous_github_snapshot(
+        self, repository: str, before_date: str
+    ) -> dict[str, object] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT stars, forks, pushed_at, captured_at, observed_date
+                FROM github_repository_snapshots
+                WHERE repository = ? AND observed_date < ?
+                ORDER BY observed_date DESC
+                LIMIT 1
+                """,
+                (repository.casefold(), before_date),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def put_github_snapshot(
+        self,
+        repository: str,
+        observed_date: str,
+        stars: int,
+        forks: int,
+        pushed_at: datetime,
+        captured_at: datetime,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO github_repository_snapshots (
+                    repository, observed_date, stars, forks, pushed_at, captured_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(repository, observed_date) DO UPDATE SET
+                    stars=excluded.stars,
+                    forks=excluded.forks,
+                    pushed_at=excluded.pushed_at,
+                    captured_at=excluded.captured_at
+                """,
+                (
+                    repository.casefold(),
+                    observed_date,
+                    stars,
+                    forks,
+                    pushed_at.isoformat(),
+                    captured_at.isoformat(),
+                ),
             )
 
     def add_new_items_to_digest(self, date_str: str, items: list[ContentItem]) -> None:
