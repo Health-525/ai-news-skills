@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 VERSION_RE = re.compile(r"^[0-9a-f]{40}$")
 MAX_CARD_BYTES = 20_000
@@ -64,13 +62,7 @@ def load_release_manifest(path: Path) -> dict[str, object]:
     }
 
 
-def build_release_card(
-    manifest: dict[str, object],
-    deployed_at: datetime | None = None,
-) -> dict:
-    deployed_at = deployed_at or datetime.now(ZoneInfo("Asia/Shanghai"))
-    if deployed_at.tzinfo is None:
-        deployed_at = deployed_at.replace(tzinfo=ZoneInfo("Asia/Shanghai"))
+def build_release_card(manifest: dict[str, object]) -> dict:
     version = str(manifest["version"])
     changes = manifest["changes"]
     verification = manifest["verification"]
@@ -86,9 +78,7 @@ def build_release_card(
             "title": {"tag": "plain_text", "content": "AI News Skills · 更新公告"},
             "subtitle": {
                 "tag": "plain_text",
-                "content": deployed_at.astimezone(ZoneInfo("Asia/Shanghai")).strftime(
-                    "%Y-%m-%d %H:%M 生效"
-                ),
+                "content": f"版本 {version[:7]} · 已生效",
             },
         },
         "body": {
