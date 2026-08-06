@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import io
 import json
@@ -54,6 +55,9 @@ from radar.workflow import (
 
 
 def main() -> int:
+    if not __debug__:
+        print(json.dumps({"status": "failed", "error": "assertions are disabled by Python optimization"}))
+        return 1
     status, text, reason = source_text_status(
         "This release introduces a concrete agent evaluation workflow with reproducible metrics."
     )
@@ -78,7 +82,7 @@ def main() -> int:
     official_sources = load_official_sources(
         Path(__file__).resolve().parents[1] / "references" / "official-news-sources.json"
     )
-    assert len(official_sources) == 46
+    assert len(official_sources) == 49
     github_config = load_github_radar_config(
         Path(__file__).resolve().parents[1] / "references" / "github-radar.json"
     )
@@ -468,7 +472,7 @@ def main() -> int:
         hashlib.sha256(b"newest").hexdigest()[:24],
         hashlib.sha256(b"newer").hexdigest()[:24],
     ]
-    assert limited_health.checks[0].detail == "limited 3 matching items to 2"
+    assert limited_health.checks[0].detail.startswith("limited 3 matching items to 2;")
     youtube_feed = """<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom"
       xmlns:yt="http://www.youtube.com/xml/schemas/2015"
@@ -1519,15 +1523,12 @@ def main() -> int:
         assert len(html_items) == 1 and html_health.status == "ok"
         assert html_items[0].title == "Official Model Two"
         html_health_payload = html_health.to_dict()
-        assert html_health_payload["checks"] == [
-            {
-                "name": "Example Lab",
-                "status": "ok",
-                "items": 1,
-                "cached": 0,
-                "detail": "",
-            }
-        ]
+        assert len(html_health_payload["checks"]) == 1
+        assert {
+            key: html_health_payload["checks"][0][key]
+            for key in ("name", "status", "items", "cached")
+        } == {"name": "Example Lab", "status": "ok", "items": 1, "cached": 0}
+        assert html_health_payload["checks"][0]["detail"].startswith("fetched;")
         empty_index_source: OfficialSource = {
             **html_source,
             "name": "Empty Index Lab",
@@ -1542,13 +1543,13 @@ def main() -> int:
         assert len(mixed_items) == 1 and mixed_health.status == "warn"
         mixed_checks = mixed_health.to_dict()["checks"]
         assert len(mixed_checks) == 2
-        assert mixed_checks[1] == {
-            "name": "Empty Index Lab",
-            "status": "error",
-            "items": 0,
-            "cached": 0,
-            "detail": "official index contains no matching article links",
-        }
+        assert {
+            key: mixed_checks[1][key]
+            for key in ("name", "status", "items", "cached")
+        } == {"name": "Empty Index Lab", "status": "error", "items": 0, "cached": 0}
+        assert mixed_checks[1]["detail"].startswith(
+            "official index contains no matching article links;"
+        )
         slash_date_source: OfficialSource = {
             **html_source,
             "name": "Slash Date Lab",
@@ -1739,7 +1740,11 @@ def main() -> int:
 
     diagnostics = doctor()
     assert diagnostics["status"] == "ok", json.dumps(diagnostics, ensure_ascii=False)
-    print(json.dumps({"status": "ok", "tests": 52}, ensure_ascii=False))
+    assertion_count = sum(
+        isinstance(node, ast.Assert)
+        for node in ast.walk(ast.parse(Path(__file__).read_text(encoding="utf-8")))
+    )
+    print(json.dumps({"status": "ok", "assertions": assertion_count}, ensure_ascii=False))
     return 0
 
 

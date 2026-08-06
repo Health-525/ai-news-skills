@@ -6,7 +6,9 @@ import hashlib
 import html
 import json
 import re
+import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
@@ -30,6 +32,9 @@ MONTH_DATE_RE = re.compile(
 )
 NUMERIC_DATE_RE = re.compile(
     r"\b(?P<year>20\d{2})[./](?P<month>\d{1,2})[./](?P<day>\d{1,2})\b"
+)
+EAST_ASIAN_DATE_RE = re.compile(
+    r"(?P<year>20\d{2})年\s*(?P<month>\d{1,2})月\s*(?P<day>\d{1,2})日"
 )
 DATE_PUBLISHED_RE = re.compile(
     r"""\\?["']datePublished\\?["']\s*:\s*\\?["']([^"'\\]+)""",
@@ -510,7 +515,7 @@ def _within_window(published_at: datetime, date_only: bool, cutoff: datetime) ->
 
 
 def _month_date(value: str) -> tuple[datetime, bool] | None:
-    numeric_match = NUMERIC_DATE_RE.search(value)
+    numeric_match = NUMERIC_DATE_RE.search(value) or EAST_ASIAN_DATE_RE.search(value)
     if numeric_match:
         try:
             return (
@@ -1121,15 +1126,12 @@ def fetch_official_news(
     storage: Storage,
     fetcher: Fetcher,
 ) -> tuple[list[ContentItem], SourceHealth]:
-    items: list[ContentItem] = []
-    fetched_sources = 0
-    failed_sources: list[str] = []
-    cached_requests = 0
-    failed_articles = 0
-    source_checks: list[SourceCheck] = []
-    for source in sources:
-        cached_before = cached_requests
-        article_failures_before = failed_articles
+    def collect_one(
+        index: int, source: OfficialSource
+    ) -> tuple[int, list[ContentItem], int, int, SourceCheck, str]:
+        started = time.monotonic()
+        cached_requests = 0
+        article_failures = 0
         try:
             kind = source["kind"]
             if kind in {
@@ -1164,7 +1166,6 @@ def fetch_official_news(
                     body, source, cutoff, storage, fetcher
                 )
                 cached_requests += article_cache
-                failed_articles += article_failures
             matching_items = len(source_items)
             max_items = source.get("max_items")
             if max_items is not None and matching_items > max_items:
@@ -1173,54 +1174,79 @@ def fetch_official_news(
                     key=lambda item: (item.published_at, item.item_id),
                     reverse=True,
                 )[:max_items]
-            items.extend(source_items)
-            fetched_sources += 1
-            source_article_failures = failed_articles - article_failures_before
-            source_checks.append(
+            elapsed_ms = round((time.monotonic() - started) * 1000)
+            if article_failures:
+                source_detail = f"{article_failures} article metadata failures"
+            elif matching_items > len(source_items):
+                source_detail = f"limited {matching_items} matching items to {len(source_items)}"
+            elif not source_items:
+                source_detail = "no in-window items"
+            else:
+                source_detail = "fetched"
+            return (
+                index,
+                source_items,
+                cached_requests,
+                article_failures,
                 SourceCheck(
                     name=str(source["name"]),
-                    status="warn" if source_article_failures else "ok",
+                    status="warn" if article_failures or elapsed_ms >= 30_000 else "ok",
                     items=len(source_items),
-                    cached=cached_requests - cached_before,
-                    detail=(
-                        f"{source_article_failures} article metadata failures"
-                        if source_article_failures
-                        else f"limited {matching_items} matching items to {len(source_items)}"
-                        if matching_items > len(source_items)
-                        else "no in-window items"
-                        if not source_items
-                        else ""
-                    ),
-                )
+                    cached=cached_requests,
+                    detail=f"{source_detail}; {elapsed_ms}ms",
+                ),
+                "",
             )
         except Exception as error:
             source_name = str(source["name"])
-            failed_sources.append(source_name)
             failure_detail = (
                 str(error)[:160]
                 if isinstance(error, ValueError) and str(error)
                 else type(error).__name__
             )
-            source_checks.append(
+            elapsed_ms = round((time.monotonic() - started) * 1000)
+            return (
+                index,
+                [],
+                cached_requests,
+                article_failures,
                 SourceCheck(
                     name=source_name,
                     status="error",
                     items=0,
-                    cached=cached_requests - cached_before,
-                    detail=failure_detail,
-                )
+                    cached=cached_requests,
+                    detail=f"{failure_detail}; {elapsed_ms}ms",
+                ),
+                source_name,
             )
+
+    results: list[tuple[int, list[ContentItem], int, int, SourceCheck, str]] = []
+    with ThreadPoolExecutor(max_workers=min(12, len(sources))) as executor:
+        futures = {
+            executor.submit(collect_one, index, source): index
+            for index, source in enumerate(sources)
+        }
+        for future in as_completed(futures):
+            results.append(future.result())
+    results.sort(key=lambda result: result[0])
+    items = [item for result in results for item in result[1]]
+    cached_requests = sum(result[2] for result in results)
+    failed_articles = sum(result[3] for result in results)
+    source_checks = [result[4] for result in results]
+    failed_sources = [result[5] for result in results if result[5]]
+    fetched_sources = len(sources) - len(failed_sources)
+    slow_sources = [check.name for check in source_checks if check.status == "warn"]
 
     if not fetched_sources:
         status = "error"
-    elif failed_sources or failed_articles:
+    elif failed_sources or failed_articles or slow_sources:
         status = "warn"
     else:
         status = "ok"
     detail = (
         f"{len(sources)} configured sources; {fetched_sources} fetched; "
         f"{len(failed_sources)} source failures; {failed_articles} article failures; "
-        f"{len(items)} items"
+        f"{len(slow_sources)} slow/warn sources; {len(items)} items"
     )
     if failed_sources:
         detail += f"; unavailable: {', '.join(failed_sources)}"

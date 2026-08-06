@@ -14,6 +14,8 @@ from typing import Literal
 
 from .models import ContentItem
 
+SCHEMA_VERSION = 2
+
 
 class _ClosingConnection(sqlite3.Connection):
     def __exit__(
@@ -38,6 +40,11 @@ class Storage:
         if os.name != "nt":
             os.chmod(self.state_dir, 0o700)
         with self._connect() as connection:
+            current_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+            if current_version > SCHEMA_VERSION:
+                raise ValueError(
+                    f"state database schema {current_version} is newer than supported {SCHEMA_VERSION}"
+                )
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS items (
@@ -114,8 +121,29 @@ class Storage:
                 );
                 CREATE INDEX IF NOT EXISTS idx_digest_drafts_requester
                 ON digest_drafts (requester_hash, status, created_at);
+                CREATE TABLE IF NOT EXISTS item_feedback (
+                    item_key TEXT NOT NULL,
+                    requester_hash TEXT NOT NULL,
+                    value TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (item_key, requester_hash),
+                    FOREIGN KEY (item_key) REFERENCES items(item_key)
+                );
+                CREATE INDEX IF NOT EXISTS idx_item_feedback_updated
+                ON item_feedback (updated_at, value);
+                CREATE TABLE IF NOT EXISTS collection_runs (
+                    digest_date TEXT PRIMARY KEY,
+                    generated_at TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    quality_gate_json TEXT NOT NULL,
+                    source_health_json TEXT NOT NULL,
+                    total INTEGER NOT NULL,
+                    available INTEGER NOT NULL
+                );
                 """
             )
+            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(
@@ -662,6 +690,196 @@ class Storage:
                 ),
             ).fetchone()
         return str(row["status"]) if row else None
+
+    def record_feedback(self, requester_id: str, item_id: str, value: str) -> str:
+        if value not in {"useful", "not_useful"}:
+            raise ValueError("feedback value must be useful or not_useful")
+        normalized_id = item_id.strip()
+        if not normalized_id:
+            raise ValueError("feedback item_id must not be empty")
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT item_key FROM items
+                WHERE item_key = ? OR item_id = ?
+                ORDER BY discovered_at DESC LIMIT 1
+                """,
+                (normalized_id, normalized_id),
+            ).fetchone()
+            if not row:
+                raise ValueError("feedback item was not found")
+            item_key = str(row["item_key"])
+            connection.execute(
+                """
+                INSERT INTO item_feedback (
+                    item_key, requester_hash, value, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(item_key, requester_hash) DO UPDATE SET
+                    value=excluded.value,
+                    updated_at=excluded.updated_at
+                """,
+                (item_key, self.identity_hash(requester_id), value, now, now),
+            )
+        return item_key
+
+    def feedback_summary(self, since: datetime) -> dict[str, int]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT value, COUNT(*) AS total FROM item_feedback
+                WHERE updated_at >= ? GROUP BY value
+                """,
+                (since.astimezone(timezone.utc).isoformat(),),
+            ).fetchall()
+        counts = {"useful": 0, "not_useful": 0}
+        counts.update({str(row["value"]): int(row["total"]) for row in rows})
+        return counts
+
+    def feedback_items(
+        self, requester_id: str, limit: int = 200
+    ) -> list[tuple[ContentItem, str]]:
+        if not 1 <= limit <= 1000:
+            raise ValueError("feedback item limit must be 1 through 1000")
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT i.*, f.value FROM item_feedback f
+                JOIN items i ON i.item_key = f.item_key
+                WHERE f.requester_hash = ?
+                ORDER BY f.updated_at DESC
+                LIMIT ?
+                """,
+                (self.identity_hash(requester_id), limit),
+            ).fetchall()
+        return [
+            (
+                ContentItem(
+                    item_id=row["item_id"],
+                    source_type=row["source_type"],
+                    source=row["source"],
+                    title=row["title"],
+                    published_at=datetime.fromisoformat(row["published_at"]),
+                    url=row["url"],
+                    raw_source_text=row["raw_source_text"],
+                    recommendation=row["recommendation"],
+                    extra=row["extra"],
+                ),
+                str(row["value"]),
+            )
+            for row in rows
+        ]
+
+    def items_since(self, since: datetime) -> list[ContentItem]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM items WHERE published_at >= ?
+                ORDER BY published_at DESC
+                """,
+                (since.astimezone(timezone.utc).isoformat(),),
+            ).fetchall()
+        return [
+            ContentItem(
+                item_id=row["item_id"],
+                source_type=row["source_type"],
+                source=row["source"],
+                title=row["title"],
+                published_at=datetime.fromisoformat(row["published_at"]),
+                url=row["url"],
+                raw_source_text=row["raw_source_text"],
+                recommendation=row["recommendation"],
+                extra=row["extra"],
+            )
+            for row in rows
+        ]
+
+    def maintenance(self, retention_days: int = 30, *, dry_run: bool = True) -> dict[str, object]:
+        if not 7 <= retention_days <= 365:
+            raise ValueError("retention_days must be 7 through 365")
+        now = datetime.now(timezone.utc)
+        general_cutoff = (now - timedelta(days=retention_days)).isoformat()
+        snapshot_cutoff = (now - timedelta(days=max(retention_days, 180))).date().isoformat()
+        statements = {
+            "http_cache": ("fetched_at < ?", general_cutoff),
+            "subscription_proposals": ("expires_at < ? AND status != 'pending'", general_cutoff),
+            "digest_drafts": ("expires_at < ? AND status NOT IN ('pending', 'sending')", general_cutoff),
+            "github_repository_snapshots": ("observed_date < ?", snapshot_cutoff),
+        }
+        counts: dict[str, int] = {}
+        with self._connect() as connection:
+            for table, (where, value) in statements.items():
+                count = connection.execute(
+                    f"SELECT COUNT(*) AS total FROM {table} WHERE {where}", (value,)
+                ).fetchone()
+                counts[table] = int(count["total"])
+                if not dry_run:
+                    connection.execute(f"DELETE FROM {table} WHERE {where}", (value,))
+        return {
+            "status": "dry_run" if dry_run else "completed",
+            "retention_days": retention_days,
+            "eligible_rows": counts,
+            "deleted_rows": 0 if dry_run else sum(counts.values()),
+            "schema_version": SCHEMA_VERSION,
+        }
+
+    def record_collection_run(
+        self,
+        date_str: str,
+        status: str,
+        quality_gate: dict[str, object],
+        source_health: list[dict[str, object]],
+        total: int,
+        available: int,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO collection_runs (
+                    digest_date, generated_at, status, quality_gate_json,
+                    source_health_json, total, available
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(digest_date) DO UPDATE SET
+                    generated_at=excluded.generated_at,
+                    status=excluded.status,
+                    quality_gate_json=excluded.quality_gate_json,
+                    source_health_json=excluded.source_health_json,
+                    total=excluded.total,
+                    available=excluded.available
+                """,
+                (
+                    date_str,
+                    datetime.now(timezone.utc).isoformat(),
+                    status,
+                    json.dumps(quality_gate, ensure_ascii=False, sort_keys=True),
+                    json.dumps(source_health, ensure_ascii=False, sort_keys=True),
+                    total,
+                    available,
+                ),
+            )
+
+    def collection_run_summary(self, since_date: str) -> dict[str, object]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT status, total, available, source_health_json
+                FROM collection_runs WHERE digest_date >= ? ORDER BY digest_date
+                """,
+                (since_date,),
+            ).fetchall()
+        source_failures = 0
+        for row in rows:
+            health = json.loads(row["source_health_json"])
+            source_failures += sum(int(entry.get("failed", 0)) for entry in health)
+        total = sum(int(row["total"]) for row in rows)
+        available = sum(int(row["available"]) for row in rows)
+        return {
+            "runs": len(rows),
+            "failed_runs": sum(str(row["status"]) == "failed" for row in rows),
+            "signals": total,
+            "availability_ratio": round(available / total, 4) if total else 0,
+            "source_failures": source_failures,
+        }
 
 
 def atomic_write_json(path: Path, payload: object) -> None:
