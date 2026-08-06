@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile
+        run: python -m compileall -q scripts tests
+      - name: Validate local configuration
+        run: python scripts/daily_pipeline.py doctor
+      - name: Legacy regression suite
+        run: python scripts/self_test.py
+      - name: Evolution unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Ensure optimized Python cannot bypass regression checks
+        run: >-
+          python -c "import subprocess,sys;
+          result=subprocess.run([sys.executable,'-O','scripts/self_test.py']);
+          raise SystemExit(0 if result.returncode else 1)"
+      - name: Build runtime-only archive
+        run: python scripts/package_skill.py --output ai-news-skills.zip
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        with:
+          name: ai-news-skills-runtime
+          path: ai-news-skills.zip

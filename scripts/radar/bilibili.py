@@ -23,6 +23,7 @@ BILIBILI_SPACE_URL = "https://api.bilibili.com/x/space/wbi/arc/search"
 BILIBILI_USER_ID_RE = re.compile(r"^[1-9][0-9]{0,19}$")
 FETCH_TIMEOUT_SECONDS = 20
 CACHE_FALLBACK_HOURS = 72
+LOCAL_CACHE_REUSE_MINUTES = 15
 BILIBILI_REQUEST_INTERVAL_SECONDS = 5.0
 USER_AGENT = "Mozilla/5.0"
 WBI_MIXIN_KEY_ENC_TAB = (
@@ -71,6 +72,16 @@ def _cache_is_recent(cache: dict[str, object]) -> bool:
     )
 
 
+def _cache_is_hot(cache: dict[str, object]) -> bool:
+    try:
+        fetched_at = datetime.fromisoformat(str(cache["fetched_at"]))
+    except (KeyError, ValueError):
+        return False
+    return datetime.now(timezone.utc) - fetched_at <= timedelta(
+        minutes=LOCAL_CACHE_REUSE_MINUTES
+    )
+
+
 def _cached_body(cache: dict[str, object]) -> bytes:
     body = cache.get("body")
     if isinstance(body, bytes):
@@ -82,6 +93,8 @@ def _cached_body(cache: dict[str, object]) -> bytes:
 
 def _fetch_bytes(url: str, cache_key: str, storage: Storage) -> tuple[bytes, bool]:
     cache = storage.get_http_cache(cache_key)
+    if cache and _cache_is_hot(cache):
+        return _cached_body(cache), True
     cache_query = urllib.parse.parse_qs(urllib.parse.urlparse(cache_key).query)
     user_id = str(cache_query.get("mid", [""])[0]).strip()
     headers = {
@@ -276,7 +289,12 @@ def fetch_bilibili(
 
     for index, account in enumerate(accounts):
         if index and fetcher is _fetch_bytes:
-            time.sleep(BILIBILI_REQUEST_INTERVAL_SECONDS)
+            account_cache_key = (
+                f"{BILIBILI_SPACE_URL}?mid={urllib.parse.quote(account['user_id'])}"
+            )
+            account_cache = storage.get_http_cache(account_cache_key)
+            if not account_cache or not _cache_is_hot(account_cache):
+                time.sleep(BILIBILI_REQUEST_INTERVAL_SECONDS)
         try:
             account_items, used_cache = fetch_account(account)
         except Exception:

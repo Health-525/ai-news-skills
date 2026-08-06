@@ -6,20 +6,30 @@ or invented records.
 
 The maintained Feishu card displays:
 
-- per-card total, current-window, recovered, official news, YouTube, Bilibili, AIHOT, GitHub radar, industry
-  digest, Builders X, and model-selected highlight counts;
-- source sections ordered as official news, YouTube, Bilibili, AIHOT, GitHub radar, industry digest, then
-  Builders X;
+- per-card total, current-window, recovered, official news, YouTube, Bilibili, AIHOT, GitHub radar,
+  security advisory, model Hub, industry digest, Builders X, and model-selected highlight counts;
+- source sections ordered as official news, YouTube, Bilibili, AIHOT, GitHub radar, security
+  advisories, model Hub, industry digest, then Builders X;
 - source section headers use the Feishu JSON 2.0 `heading` text size while item bodies retain the
   normal Markdown size;
+- a compact `全球 AI 核心事件` overview lists up to five ranked primary event leaders per card;
+- records are packed into cards by global editorial score before they are grouped into the
+  familiar source sections;
 - model-selected highlights expanded first inside each source section;
 - remaining records collapsed immediately after their source highlights;
 - `来源摘要` and an optional source-provided recommendation;
+- deterministic signal type, evidence level, bounded topic tags, audience fit, editorial score,
+  alert level, change type, verification label, confidence, and event-chain/source-diversity counts for every
+  ranked item;
 - the orange AI 前哨 header.
 
 The renderer splits oversized payloads instead of truncating records. Delivery hashes the rendered
 cards and target, then writes a private receipt. A retry with the same target and card hash returns
 `skipped`; a mismatched receipt fails closed.
+
+Before rendering schema-version-2 sources, verify the source-text, record, and source-set hashes.
+The private card artifact records source-set, frozen-Markdown, and rendered-card hashes for audit and
+reproducibility.
 
 The owner preview appends a separate approval control card containing exact approve/reject commands.
 Approval stores and later sends only the exact digest cards, so the group never receives approval
