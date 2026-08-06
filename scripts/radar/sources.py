@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import json
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -20,11 +21,14 @@ from .bilibili import fetch_bilibili
 from .models import ContentItem, SourceHealth
 from .official_news import OfficialSource, fetch_official_news
 from .github_radar import GitHubRadarConfig, fetch_github_trending
+from .huggingface_radar import HuggingFaceRadarConfig, fetch_huggingface_models
+from .security_advisories import SecurityAdvisoryConfig, fetch_security_advisories
 from .storage import Storage
 
 USER_AGENT = "ai-news-skills/1.0"
 FETCH_TIMEOUT_SECONDS = 20
 CACHE_FALLBACK_HOURS = 72
+LOCAL_CACHE_REUSE_MINUTES = 15
 CHANNEL_ID_RE = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
 X_HANDLE_RE = re.compile(r"^[A-Za-z0-9_]{1,15}$")
 AIHOT_API_URL = "https://aihot.virxact.com/api/public/items"
@@ -130,6 +134,14 @@ def _cache_is_recent(cache: dict[str, object]) -> bool:
     return datetime.now(timezone.utc) - fetched <= timedelta(hours=CACHE_FALLBACK_HOURS)
 
 
+def _cache_is_hot(cache: dict[str, object]) -> bool:
+    try:
+        fetched = datetime.fromisoformat(str(cache["fetched_at"]))
+    except (KeyError, ValueError):
+        return False
+    return datetime.now(timezone.utc) - fetched <= timedelta(minutes=LOCAL_CACHE_REUSE_MINUTES)
+
+
 def _cached_body(cache: dict[str, object]) -> bytes:
     body = cache.get("body")
     if isinstance(body, bytes):
@@ -141,6 +153,8 @@ def _cached_body(cache: dict[str, object]) -> bytes:
 
 def _fetch_bytes(url: str, storage: Storage) -> tuple[bytes, bool]:
     cache = storage.get_http_cache(url)
+    if cache and _cache_is_hot(cache):
+        return _cached_body(cache), True
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json, application/atom+xml, */*"}
     if cache:
         if cache.get("etag"):
@@ -576,24 +590,71 @@ def collect_sources(
     industry_digest_sources: list[OfficialSource],
     builders_x_accounts: list[dict[str, str]],
     github_radar_config: GitHubRadarConfig,
+    security_advisory_config: SecurityAdvisoryConfig,
+    huggingface_radar_config: HuggingFaceRadarConfig,
     cutoff: datetime,
     storage: Storage,
 ) -> tuple[list[ContentItem], list[SourceHealth]]:
-    official_items, official_health = fetch_official_news(
-        official_sources, cutoff, storage, _fetch_bytes
-    )
-    youtube_items, youtube_health = fetch_youtube(channels, cutoff, storage)
-    bilibili_items, bilibili_health = fetch_bilibili(
-        bilibili_accounts, cutoff, storage
-    )
-    aihot_items, aihot_health = fetch_aihot(cutoff, storage)
-    github_items, github_health = fetch_github_trending(github_radar_config, storage)
-    industry_digest_items, industry_digest_health = fetch_industry_digests(
-        industry_digest_sources, cutoff, storage
-    )
-    builders_x_items, builders_x_health = fetch_builders_x(
-        builders_x_accounts, cutoff, storage
-    )
+    def timed_collect(collector: Callable[[], tuple[list[ContentItem], SourceHealth]]) -> tuple[list[ContentItem], SourceHealth]:
+        started = time.monotonic()
+        family_items, family_health = collector()
+        elapsed_ms = round((time.monotonic() - started) * 1000)
+        return family_items, replace(
+            family_health,
+            detail=f"{family_health.detail}; family_elapsed={elapsed_ms}ms",
+        )
+
+    collectors: dict[str, Callable[[], tuple[list[ContentItem], SourceHealth]]] = {
+        "official_news": lambda: fetch_official_news(
+            official_sources, cutoff, storage, _fetch_bytes
+        ),
+        "youtube": lambda: fetch_youtube(channels, cutoff, storage),
+        "bilibili": lambda: fetch_bilibili(bilibili_accounts, cutoff, storage),
+        "aihot": lambda: fetch_aihot(cutoff, storage),
+        "github_trending": lambda: fetch_github_trending(github_radar_config, storage),
+        "security_advisory": lambda: fetch_security_advisories(
+            security_advisory_config, cutoff, storage
+        ),
+        "model_hub": lambda: fetch_huggingface_models(
+            huggingface_radar_config, cutoff, storage
+        ),
+        "industry_digest": lambda: fetch_industry_digests(
+            industry_digest_sources, cutoff, storage
+        ),
+        "builders_x": lambda: fetch_builders_x(builders_x_accounts, cutoff, storage),
+    }
+    collected: dict[str, tuple[list[ContentItem], SourceHealth]] = {}
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {
+            executor.submit(timed_collect, collector): name
+            for name, collector in collectors.items()
+        }
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                collected[name] = future.result()
+            except Exception as error:
+                collected[name] = (
+                    [],
+                    SourceHealth(
+                        name,
+                        "error",
+                        0,
+                        1,
+                        0,
+                        f"unexpected family failure: {type(error).__name__}",
+                    ),
+                )
+
+    official_items, official_health = collected["official_news"]
+    youtube_items, youtube_health = collected["youtube"]
+    bilibili_items, bilibili_health = collected["bilibili"]
+    aihot_items, aihot_health = collected["aihot"]
+    github_items, github_health = collected["github_trending"]
+    security_items, security_health = collected["security_advisory"]
+    model_items, model_health = collected["model_hub"]
+    industry_digest_items, industry_digest_health = collected["industry_digest"]
+    builders_x_items, builders_x_health = collected["builders_x"]
     items = _deduplicate_items(
         [
             *official_items,
@@ -601,6 +662,8 @@ def collect_sources(
             *bilibili_items,
             *aihot_items,
             *github_items,
+            *security_items,
+            *model_items,
             *industry_digest_items,
             *builders_x_items,
         ]
@@ -611,6 +674,8 @@ def collect_sources(
         bilibili_health,
         aihot_health,
         github_health,
+        security_health,
+        model_health,
         industry_digest_health,
         builders_x_health,
     ]

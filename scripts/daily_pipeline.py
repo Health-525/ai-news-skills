@@ -7,7 +7,6 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from radar.approval import build_approval_card
 from radar.delivery import send_group_cards, send_personal_cards
@@ -19,6 +18,7 @@ from radar.subscriptions import (
     validate_batch,
 )
 from radar.sources import load_channels
+from radar.timezones import REPORT_TIMEZONE
 from radar.workflow import (
     artifact_paths,
     channels_file,
@@ -26,7 +26,9 @@ from radar.workflow import (
     load_runtime_env,
     prepare,
     release_announcements_enabled,
+    render_breaking_report,
     render_cards,
+    render_trend_report,
     scheduled_group_delivery_enabled,
     skill_root,
     state_dir,
@@ -34,7 +36,7 @@ from radar.workflow import (
 
 
 def _date(value: str | None) -> str:
-    date_str = value or datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
+    date_str = value or datetime.now(REPORT_TIMEZONE).strftime("%Y-%m-%d")
     try:
         datetime.strptime(date_str, "%Y-%m-%d")
     except ValueError as error:
@@ -49,10 +51,13 @@ def _print(payload: dict[str, object]) -> None:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("doctor", help="Run local read-only checks")
+    doctor_parser = subparsers.add_parser("doctor", help="Run local read-only checks")
+    doctor_parser.add_argument(
+        "--live", action="store_true", help="Probe configured remote endpoints without writing state"
+    )
 
     for command, help_text in (
-        ("prepare", "Collect and freeze dated RSS inputs"),
+        ("prepare", "Collect, enrich, quality-gate, and freeze dated intelligence inputs"),
         ("card", "Validate frozen Markdown and render cards"),
         ("preview", "Send owner preview and create an approval draft"),
         ("scheduled-group", "Send validated cards to the configured group without approval"),
@@ -84,6 +89,34 @@ def _parser() -> argparse.ArgumentParser:
     cancel_parser.add_argument("--proposal-id")
 
     subparsers.add_parser("subscriptions", help="List active subscriptions")
+
+    trend_parser = subparsers.add_parser(
+        "trend-report", help="Build a deterministic multi-day intelligence report"
+    )
+    trend_parser.add_argument("date", nargs="?", help="YYYY-MM-DD; defaults to Shanghai today")
+    trend_parser.add_argument("--days", type=int, default=7)
+
+    breaking_parser = subparsers.add_parser(
+        "breaking-report", help="Build a ranked, event-deduplicated high-priority brief"
+    )
+    breaking_parser.add_argument("date", nargs="?", help="YYYY-MM-DD; defaults to Shanghai today")
+    breaking_parser.add_argument("--limit", type=int, default=10)
+    breaking_parser.add_argument("--minimum-score", type=float, default=74)
+
+    feedback_parser = subparsers.add_parser(
+        "feedback", help="Record owner feedback for a collected item"
+    )
+    feedback_parser.add_argument("--requester-id", required=True)
+    feedback_parser.add_argument("--item-id", required=True)
+    feedback_parser.add_argument("--value", required=True, choices=("useful", "not_useful"))
+
+    maintenance_parser = subparsers.add_parser(
+        "maintenance", help="Inspect or prune expired private runtime state"
+    )
+    maintenance_parser.add_argument("--retention-days", type=int, default=30)
+    maintenance_parser.add_argument(
+        "--apply", action="store_true", help="Apply deletion; default is a read-only dry run"
+    )
 
     approve_parser = subparsers.add_parser("approve", help="Approve and send the exact frozen draft to the group")
     approve_parser.add_argument("--requester-id", required=True)
@@ -155,7 +188,7 @@ def _handle_subscription(args: argparse.Namespace) -> int:
         if not args.send:
             _print({"status": "valid", "cards": [card]})
             return 0
-        timestamp = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d-%H%M%S-%f")
+        timestamp = datetime.now(REPORT_TIMEZONE).strftime("%Y%m%d-%H%M%S-%f")
         code, result = _send_personal(
             [card], state_dir() / "receipts" / "subscriptions" / f"form-{timestamp}.json"
         )
@@ -328,7 +361,7 @@ def main() -> int:
     load_runtime_env()
     args = _parser().parse_args()
     if args.command == "doctor":
-        result = doctor()
+        result = doctor(live=args.live)
         _print(result)
         return 1 if result["status"] == "error" else 0
     if args.command == "release-announcement":
@@ -341,6 +374,27 @@ def main() -> int:
         "subscriptions",
     }:
         return _handle_subscription(args)
+    if args.command == "feedback":
+        try:
+            _require_owner(args.requester_id)
+            item_key = _storage().record_feedback(
+                args.requester_id, args.item_id, args.value
+            )
+        except ValueError as error:
+            _print({"status": "failed", "error": str(error)})
+            return 1
+        _print({"status": "recorded", "item_key": item_key, "value": args.value})
+        return 0
+    if args.command == "maintenance":
+        try:
+            result = _storage().maintenance(
+                args.retention_days, dry_run=not args.apply
+            )
+        except ValueError as error:
+            _print({"status": "failed", "error": str(error)})
+            return 1
+        _print(result)
+        return 0
     if args.command == "approve":
         return _handle_approve(args)
     if args.command == "reject":
@@ -354,6 +408,16 @@ def main() -> int:
         return 0
 
     date_str = _date(args.date)
+    if args.command == "trend-report":
+        exit_code, result = render_trend_report(date_str, args.days)
+        _print(result)
+        return exit_code
+    if args.command == "breaking-report":
+        exit_code, result = render_breaking_report(
+            date_str, args.limit, args.minimum_score
+        )
+        _print(result)
+        return exit_code
     if args.command == "prepare":
         diagnostics = doctor()
         if diagnostics["status"] == "error":

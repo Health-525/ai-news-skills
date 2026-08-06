@@ -36,8 +36,8 @@
 | --- | --- | --- |
 | 官方 Newsroom、API Changelog、稳定版 Releases | 每条记录独立证据，不跨来源补全事实 | 飞书原生卡片与超长内容自动拆分 |
 | 国内外行业 RSS、YouTube RSS 描述、B站投稿元数据 | 证据不足显式标记 `不可用` | 重试、哈希回执与幂等 `skipped` |
-| AIHOT、GitHub 开源雷达与 Builders X 白名单 | 冻结 Markdown 锁定模型输出边界 | 定时群直发与所有者审批双通道 |
-| 24 小时滚动窗口与来源级健康检查 | 官方主张、编辑观点和社交动态分层归因 | `08:30 Asia/Shanghai` 隔离会话运行 |
+| AIHOT、GitHub、GitHub 安全公告、Hugging Face 模型雷达 | 冻结 Markdown 与逐层哈希锁定模型输出边界 | 定时群直发与所有者审批双通道 |
+| 监管动态、Builders X 与 24 小时滚动窗口 | 官方主张、审查公告、平台元数据和社交动态分层归因 | `08:30 Asia/Shanghai` 隔离会话运行 |
 
 项目不获取字幕、音频或视频正文，不下载媒体，不执行转写，也不使用 S3 进行内容交接。
 模型只负责证据约束摘要与重点判断，其余步骤全部确定性执行。
@@ -53,11 +53,15 @@ flowchart LR
         O["Bilibili<br/>Submission Metadata"]
         D["AIHOT"]
         E["GitHub Radar<br/>Official API"]
+        P["Security Advisories<br/>Reviewed API"]
+        Q["Hugging Face<br/>Model Metadata"]
         N["Builders X<br/>Allowlist"]
     end
 
     subgraph TRUST["02 / TRUST PLANE"]
         F["Deterministic<br/>Collector"]
+        R["72h Event Graph<br/>Update Chain"]
+        S["Explainable Rank<br/>Breaking Alerts"]
         G["Dated Source JSON"]
         H["Evidence-bound<br/>OpenClaw Summary"]
         I["Frozen Markdown"]
@@ -70,14 +74,14 @@ flowchart LR
         M["Feishu Group"]
     end
 
-    A & B & C & O & D & E & N --> F
-    F --> G --> H --> I --> J --> K --> L --> M
+    A & B & C & O & D & E & P & Q & N --> F
+    F --> R --> S --> G --> H --> I --> J --> K --> L --> M
 
     classDef signal fill:#0f172a,stroke:#38bdf8,color:#f8fafc,stroke-width:2px
     classDef trust fill:#052e2b,stroke:#2dd4bf,color:#f0fdfa,stroke-width:2px
     classDef delivery fill:#431407,stroke:#fb923c,color:#fff7ed,stroke-width:2px
-    class A,B,C,D,E,N signal
-    class F,G,H,I,J trust
+    class A,B,C,D,E,N,P,Q signal
+    class F,R,S,G,H,I,J trust
     class K,L,M delivery
 ```
 
@@ -90,6 +94,25 @@ flowchart LR
 - [编辑与证据规则](references/editorial-policy.md)
 - [卡片与幂等合同](references/card-contract.md)
 - [每日定时流程](references/schedule.md)
+
+## Global AI Newsroom
+
+`prepare` now turns raw signals into a ranked newsroom artifact before any model writes a summary.
+It groups a 72-hour stream into update-aware events, distinguishes publisher identity from URL
+count, and assigns an inspectable 0-100 score from authority, freshness, impact, verification,
+novelty, title specificity, and authenticated owner feedback. The output retains every source
+record and adds one event leader per story, so high-value decisions are no longer buried under
+release-note volume.
+
+```bash
+python scripts/daily_pipeline.py prepare YYYY-MM-DD
+python scripts/daily_pipeline.py breaking-report YYYY-MM-DD --limit 10 --minimum-score 74
+python scripts/daily_pipeline.py trend-report YYYY-MM-DD --days 7
+```
+
+The breaking brief is local and read-only with respect to delivery. It never authorizes a send.
+See [the newsroom intelligence contract](references/newsroom-intelligence.md) for event roles,
+verification semantics, ranking components, alert levels, and editorial boundaries.
 
 ## Launch in 5 Minutes
 
@@ -116,10 +139,14 @@ cd ai-news-skills
 ```bash
 python scripts/daily_pipeline.py doctor
 python scripts/self_test.py
+python -m unittest discover -s tests -v
 ```
 
 `doctor` 的顶层状态应为 `ok`。单个可选运行时检查可以是 `warn`，但任何 `error` 都必须在
 继续采集或投递前处理。
+
+需要检查真实端点漂移时，单独运行 `python scripts/daily_pipeline.py doctor --live`。该命令
+只读但会访问约 60 个端点，不应放入每次日报事务。
 
 ### 04 / Collect Without Delivery
 
@@ -156,6 +183,7 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | 命令 | 用途 | 外部副作用 |
 | --- | --- | --- |
 | `doctor` | 检查 Python、来源配置、状态目录和运行时能力 | 无 |
+| `doctor --live` | 并发探测真实来源端点、延迟与成功率 | 只读网络请求 |
 | `prepare [DATE]` | 采集最近 24 小时来源并冻结 JSON | 仅写私有状态目录 |
 | `card [DATE]` | 校验冻结 Markdown 并渲染卡片 | 仅写私有状态目录 |
 | `scheduled-group [DATE] [--dry-run]` | 发送已验证的定时群日报 | 非 dry-run 会发送群消息 |
@@ -166,6 +194,9 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `subscription-confirm` | 确认并加入提案中的有效频道 | 修改外部订阅状态 |
 | `subscription-cancel` | 取消待处理提案 | 修改外部订阅状态 |
 | `subscriptions` | 列出当前有效订阅 | 无 |
+| `trend-report [DATE] --days N` | 生成 2–31 天确定性趋势报告 | 仅写私有状态目录 |
+| `feedback` | 记录认证所有者的有用/无用反馈 | 修改私有反馈状态 |
+| `maintenance [--apply]` | 预览或清理过期缓存、草稿与快照 | `--apply` 删除过期私有状态 |
 | `release-announcement --manifest FILE [--dry-run]` | 发布生产版本更新公告 | 非 dry-run 会发送群消息 |
 
 运行 `python scripts/daily_pipeline.py --help` 查看完整参数。人工审批与定时直发是两条独立流程，
@@ -178,6 +209,8 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `references/official-news-sources.json` | 官方 RSS、Changelog、Newsroom、GitHub Releases 与一手接口 |
 | `references/industry-digest-sources.json` | 公司导向的行业与编辑型 RSS |
 | `references/github-radar.json` | GitHub AI 主题、发现窗口与热度阈值 |
+| `references/security-advisories.json` | GitHub 审查安全公告的 AI 依赖包白名单 |
+| `references/huggingface-radar.json` | Hugging Face 模型发布组织白名单 |
 | `references/youtube-channels.json` | 初始 YouTube 频道种子列表 |
 | `references/bilibili-accounts.json` | 全量采集的 B 站账号白名单 |
 | `references/builders-x-accounts.json` | Builders X 本地账户白名单 |
@@ -217,6 +250,11 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `AI_NEWS_INDUSTRY_DIGEST_SOURCES_FILE` | 行业 RSS 配置覆盖文件 |
 | `AI_NEWS_GITHUB_RADAR_FILE` | GitHub 开源雷达配置覆盖文件 |
 | `AI_NEWS_GITHUB_TOKEN` | 可选的只读 GitHub API 令牌 |
+| `AI_NEWS_SECURITY_ADVISORIES_FILE` | 安全公告依赖白名单覆盖文件 |
+| `AI_NEWS_HUGGINGFACE_RADAR_FILE` | 模型 Hub 组织白名单覆盖文件 |
+| `AI_NEWS_HUGGINGFACE_TOKEN` | 可选的只读 Hugging Face 令牌 |
+| `AI_NEWS_MIN_OFFICIAL_SOURCE_RATIO` | 官方来源发布门禁，默认 `0.65` |
+| `AI_NEWS_REQUIRED_OFFICIAL_SOURCES` | 必须健康的官方来源名称列表 |
 | `AI_NEWS_YOUTUBE_CHANNELS_FILE` | YouTube 频道配置覆盖文件 |
 | `AI_NEWS_BILIBILI_ACCOUNTS_FILE` | B 站账号配置覆盖文件 |
 | `AI_NEWS_AUTO_GROUP_DELIVERY` | 显式启用定时群直发 |
@@ -237,7 +275,8 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 
 推荐使用不可变提交归档与原子切换：
 
-1. 从待发布提交生成归档，不包含 `.git`、缓存或本地状态。
+1. 运行 `python scripts/package_skill.py --output PATH/ai-news-skills.zip`，从待发布提交生成
+   确定性的运行时归档，不包含 `.git`、README、CI、缓存或本地状态。
 2. 解压到远端临时目录，在临时目录运行 `self_test.py` 和 `doctor`。
 3. 将当前正式目录移动到带时间戳的私有备份目录。
 4. 将验证通过的临时目录原子切换为正式 Skill 目录。
@@ -268,9 +307,11 @@ ai-news-skills/
 ├── SKILL.md                 # Agent 唯一运行合同
 ├── README.md                # 维护者入口
 ├── agents/openai.yaml       # Skill UI 元数据
-├── references/              # 来源、编辑、卡片、定时和审批合同
+├── references/              # 来源、编辑、卡片、运营、定时和审批合同
+├── tests/                   # 新能力的标准库单元测试
 └── scripts/
     ├── daily_pipeline.py    # 唯一维护入口
+    ├── package_skill.py     # 确定性运行时归档
     ├── self_test.py         # 离线回归测试
     ├── send_feishu_card.mjs # OpenClaw 飞书原生卡片桥
     └── radar/               # 采集、存储、摘要校验与投递模块

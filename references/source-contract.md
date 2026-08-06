@@ -67,6 +67,15 @@
   review. The collector does not fetch README files, source code, issues, or arbitrary repository
   links. Search requests run serially, stop after rate-limit exhaustion, reuse a short-lived local
   cache for same-run retries, and expose stale fallback or query failures in `source_health`.
+- Security radar: GitHub-reviewed global advisories returned by the official GitHub Advisory API,
+  restricted to the package and ecosystem allowlist in `security-advisories.json`. Evidence includes
+  the reviewed description, affected range, patched version, CVE/GHSA identifiers, severity, and
+  update time. An advisory does not prove that a deployment uses an affected version.
+- Model Hub radar: public Hugging Face Hub API metadata for organizations in
+  `huggingface-radar.json`. Only repositories created inside the overlap window are emitted.
+  Evidence is limited to repository identity, creation time, pipeline tag, library, license tag,
+  and observed activity counts. This is uploader/platform metadata, not a quality, safety,
+  benchmark, adoption, or production-readiness review. Never download model files or execute code.
 - Builders X: the public `feed-x.json` maintained by `follow-builders`, restricted to the
   repository-owned `builders-x-accounts.json` allowlist. Evidence comes only from each accepted
   post's own text. The collector rejects stale feeds, unknown accounts, link-only posts, posts under
@@ -89,6 +98,11 @@
   bootstrap threshold or later crosses the snapshot-growth threshold; they are not presented as
   repository publication dates.
 
+Regulatory and safety coverage includes NIST AI, the European Commission AI policy newsroom, and
+the UK AI Security Institute's official GOV.UK Atom feed. These sources remain attributed public
+sector publications; their inclusion does not make a policy proposal, evaluation, or risk claim a
+universal fact.
+
 The collector handles gzip responses, uses conditional requests when validators are available, and
 can use a recent private cache during transient outages. Every fallback is visible in
 `source_health`; stale official RSS,
@@ -102,16 +116,41 @@ titles are identical or extremely similar; separate official announcements and m
 different editorial analysis remain independent records. Dated changelog
 entries use the canonical changelog URL plus entry date, so separate release days remain distinct.
 
+After identity-level deduplication, the newsroom layer may link retained records under one
+`event_id`; linking does not delete evidence records or transfer source text between them. It uses a
+72-hour window and requires matching signal type plus entity/product/version or sufficiently
+specific title evidence. Brand names, generic AI terms, series labels, and coincidental numeric
+metrics are not sufficient by themselves.
+
 ## Output schema
 
-The dated source JSON contains `schema_version`, `date`, `generated_at`, `summary_basis`, the
-24-hour `window`, the overlapping `collection_window`, `source_health`, and `items`. Aggregated
+The schema-version-2 dated source JSON contains `schema_version`, `date`, `generated_at`, `summary_basis`, the
+24-hour `window`, the overlapping `collection_window`, `source_health`, `newsroom`, and `items`. Aggregated
 official and editorial health includes per-source checks with status, accepted item count, cache
 usage, and a sanitized failure reason so one broken route cannot hide behind an otherwise successful
 collection. Each item includes identity, source, publication time, `recency_status`, canonical URL,
 quality status, cleaned source text, unavailable reason, and optional recommendation. A `current`
 item falls inside the primary 24-hour window; a `recovered` item is an unseen entry recovered from
 the overlap after source onboarding, delayed publication, or a transient collection failure.
+
+Every record also contains deterministic `event_id`, `signal_type`, `topics`, `entities`, `audiences`, `language`,
+`evidence_level`, event role/version/update fields, evidence-topology labels, a confidence score,
+an explainable editorial score and component breakdown, `rank_position`, `alert_level`,
+`recommended_highlight`, `source_text_sha256`, and `record_sha256`. Records are serialized in
+editorial rank order. The top-level `newsroom` summary reports signal-to-event compression,
+verification distribution, alert distribution, ranking model, feedback sample count, and a
+deterministic fingerprint. See `newsroom-intelligence.md` for semantics and non-truth boundaries.
+
+When `AI_NEWS_OWNER_ID` is configured, ranking can use only that authenticated owner's latest
+feedback. Personalization remains neutral until three samples exist and is capped at +/-10 points;
+it never changes source text or evidence labels. Top-level provenance records the full source-set
+hash, newsroom-summary hash, and deployed code version. Card rendering verifies these hashes and
+records the source-set, newsroom, frozen-Markdown, and rendered-card hashes. Hashes provide tamper evidence; they do not
+upgrade the truth value of a publisher claim.
+
+Collection applies a publication gate. By default at least 65% of configured official sources must
+fetch successfully. A deployment can configure a stricter ratio and required official source names.
+A failed gate writes no new dated source artifact and prevents delivery.
 
 Only `source_text_status=available` records may be summarized. Link-heavy, promotional, empty, or
 materially short descriptions remain unavailable. Builders X filtering happens before records are
@@ -142,6 +181,13 @@ Optional environment variables:
 - `AI_NEWS_GITHUB_RADAR_FILE`: external GitHub topic and threshold configuration override.
 - `AI_NEWS_GITHUB_TOKEN`: optional read-only GitHub API token. Public collection works without it;
   when configured, keep it only in the private runtime environment and grant no write permission.
+- `AI_NEWS_SECURITY_ADVISORIES_FILE`: external security package allowlist override.
+- `AI_NEWS_HUGGINGFACE_RADAR_FILE`: external model-organization allowlist override.
+- `AI_NEWS_HUGGINGFACE_TOKEN`: optional read-only Hugging Face token for higher rate limits.
+- `AI_NEWS_MIN_OFFICIAL_SOURCE_RATIO`: official-source publication ratio from `0` through `1`;
+  default `0.65`.
+- `AI_NEWS_REQUIRED_OFFICIAL_SOURCES`: optional comma-separated official source names that must be
+  healthy before publication.
 - `AI_NEWS_FEISHU_PERSONAL_TARGET`: private owner preview target.
 - `AI_NEWS_FEISHU_GROUP_TARGET`: configured group target.
 - `AI_NEWS_AUTO_GROUP_DELIVERY`: explicit opt-in for approval-free scheduled group delivery;

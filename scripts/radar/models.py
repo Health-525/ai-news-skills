@@ -29,6 +29,8 @@ class ContentItem:
         normalized = canonical_url(self.url)
         if self.source_type == "github_trending":
             return f"{normalized}#trend-date={self.published_at.date().isoformat()}"
+        if self.source_type == "security_advisory":
+            return f"{normalized}#advisory-date={self.published_at.date().isoformat()}"
         if self.extra == "官方 Release Notes":
             return f"{normalized}#entry={self.item_id}"
         if self.extra == "官方 Changelog":

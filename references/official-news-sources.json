@@ -415,6 +415,44 @@
     "title_exclude_terms": ["GeForce NOW", "gaming", "esports"]
   },
   {
+    "name": "NIST AI",
+    "kind": "rss",
+    "url": "https://www.nist.gov/news-events/news/rss.xml",
+    "allowed_hosts": ["nist.gov"],
+    "title_include_terms": [
+      "artificial intelligence",
+      "AI model",
+      "AI system",
+      "AI risk",
+      "AI safety",
+      "AI standard",
+      "machine learning"
+    ],
+    "max_items": 4
+  },
+  {
+    "name": "UK AI Security Institute",
+    "kind": "rss",
+    "url": "https://www.gov.uk/government/organisations/ai-security-institute.atom",
+    "allowed_hosts": ["gov.uk"],
+    "max_items": 6
+  },
+  {
+    "name": "European Commission AI",
+    "kind": "html_index",
+    "index_url": "https://digital-strategy.ec.europa.eu/en/related-content?topic=119",
+    "article_path_prefix": "/en/news/",
+    "allowed_hosts": ["digital-strategy.ec.europa.eu"],
+    "max_candidates": 12,
+    "title_include_terms": [
+      "AI",
+      "artificial intelligence",
+      "general-purpose AI",
+      "GPAI"
+    ],
+    "max_items": 4
+  },
+  {
     "name": "OpenAI Codex Releases",
     "kind": "rss",
     "url": "https://github.com/openai/codex/releases.atom",

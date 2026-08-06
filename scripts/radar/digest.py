@@ -15,8 +15,10 @@ SOURCE_ORDER = {
     "bilibili": 2,
     "aihot": 3,
     "github_trending": 4,
-    "industry_digest": 5,
-    "builders_x": 6,
+    "security_advisory": 5,
+    "model_hub": 6,
+    "industry_digest": 7,
+    "builders_x": 8,
 }
 ITEM_PATTERN = re.compile(
     r"^###\s+\d+\.\s+\[(?P<title>.+)]\((?P<url>https?://[^)]+)\)\s*$"
@@ -112,6 +114,21 @@ class FrozenItem:
     recommendation: str
     highlight: bool
     recency_status: str = "current"
+    signal_type: str = "general"
+    evidence_level: str = "unclassified"
+    topics: tuple[str, ...] = ()
+    audiences: tuple[str, ...] = ()
+    language: str = "en"
+    event_id: str = ""
+    story_role: str = "primary"
+    story_items: int = 1
+    source_diversity: int = 1
+    verification_status: str = "single_source"
+    confidence_score: int = 0
+    rank_score: float = 0.0
+    rank_reason: tuple[str, ...] = ()
+    alert_level: str = "normal"
+    change_type: str = "report"
 
 
 def _english_number(value: str) -> Decimal | None:
@@ -313,6 +330,35 @@ def validate_frozen_digest(source_payload: dict, markdown: str) -> list[FrozenIt
                 recommendation=recommendation,
                 highlight=item["highlight"] == "是",
                 recency_status=recency_status,
+                signal_type=str(record.get("signal_type", "general")),
+                evidence_level=str(record.get("evidence_level", "unclassified")),
+                topics=tuple(
+                    str(topic)
+                    for topic in record.get("topics", [])
+                    if isinstance(topic, str)
+                ),
+                audiences=tuple(
+                    str(audience)
+                    for audience in record.get("audiences", [])
+                    if isinstance(audience, str)
+                ),
+                language=str(record.get("language", "en")),
+                event_id=str(record.get("event_id", "")),
+                story_role=str(record.get("story_role", "primary")),
+                story_items=int(record.get("story_items", 1)),
+                source_diversity=int(record.get("source_diversity", 1)),
+                verification_status=str(
+                    record.get("verification_status", "single_source")
+                ),
+                confidence_score=int(record.get("confidence_score", 0)),
+                rank_score=float(record.get("rank_score", 0)),
+                rank_reason=tuple(
+                    str(reason)
+                    for reason in record.get("rank_reason", [])
+                    if isinstance(reason, str)
+                ),
+                alert_level=str(record.get("alert_level", "normal")),
+                change_type=str(record.get("change_type", "report")),
             )
         )
     return frozen
@@ -344,12 +390,56 @@ def _item_markdown(item: FrozenItem, index: int | None = None) -> str:
     lines = [
         f"**{prefix}[{_safe_title(item)}]({item.url})**",
         f"<font color='grey'>{_source_label(item)}</font>",
+        (
+            f"<font color='grey'>信号 {item.signal_type} · 证据 {item.evidence_level}"
+            f"{' · ' + '/'.join(item.topics[:3]) if item.topics else ''}"
+            f"{' · 面向 ' + '/'.join(item.audiences[:3]) if item.audiences else ''}</font>"
+        ),
+        f"<font color='grey'>原文语言 {item.language}</font>",
+        (
+            f"<font color='grey'>编辑评分 {item.rank_score:g} · "
+            f"{item.alert_level} · {item.change_type} · {item.verification_status} "
+            f"(置信 {item.confidence_score}) · "
+            f"事件链 {item.story_items} 条/{item.source_diversity} 源</font>"
+        )
+        if item.rank_score
+        else "",
         "**来源摘要**",
         _summary(item.summary),
     ]
     if item.recommendation:
         lines.extend(["**💡 推荐理由**", item.recommendation])
     return "\n".join(lines)
+
+
+def _priority_overview(items: list[FrozenItem]) -> list[dict]:
+    leaders = sorted(
+        (
+            item
+            for item in items
+            if item.rank_score > 0 and item.story_role == "primary"
+        ),
+        key=lambda item: (-item.rank_score, item.title.casefold()),
+    )[:5]
+    if not leaders:
+        return []
+    labels = {
+        "critical": "严重",
+        "breaking": "突发",
+        "high": "高优先级",
+        "watch": "关注",
+        "normal": "常规",
+    }
+    lines = ["**🏆 全球 AI 核心事件**"]
+    lines.extend(
+        (
+            f"{index}. [{_safe_title(item)}]({item.url})　"
+            f"`{item.rank_score:g}` · {labels.get(item.alert_level, item.alert_level)} · "
+            f"{item.verification_status}"
+        )
+        for index, item in enumerate(leaders, start=1)
+    )
+    return [{"tag": "markdown", "content": "\n".join(lines)}]
 
 
 def _collapsible(title: str, items: list[FrozenItem], element_id: str) -> dict:
@@ -423,6 +513,10 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
     bilibili = [item for item in items if item.source_type == "bilibili"]
     aihot = [item for item in items if item.source_type == "aihot"]
     github_trending = [item for item in items if item.source_type == "github_trending"]
+    security_advisory = [
+        item for item in items if item.source_type == "security_advisory"
+    ]
+    model_hub = [item for item in items if item.source_type == "model_hub"]
     industry_digest = [
         item for item in items if item.source_type == "industry_digest"
     ]
@@ -433,6 +527,8 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
         + len(bilibili)
         + len(aihot)
         + len(github_trending)
+        + len(security_advisory)
+        + len(model_hub)
         + len(industry_digest)
         + len(builders_x)
         != len(items)
@@ -451,12 +547,14 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
                 f"YouTube {len(youtube)} · "
                 f"B站 {len(bilibili)} · "
                 f"AIHOT {len(aihot)} · GitHub {len(github_trending)} · "
+                f"安全 {len(security_advisory)} · 模型 {len(model_hub)} · "
                 f"行业精选 {len(industry_digest)} · "
                 f"X {len(builders_x)}\n"
                 f"<font color='grey'>模型判断 {len(highlights)} 条重点，其余按需展开</font>"
             ),
         }
     ]
+    elements.extend(_priority_overview(items))
     elements.extend(
         _source_section(
             "官方发布",
@@ -500,6 +598,24 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
             github_trending,
             "GitHub 热门项目",
             "github_trending_more",
+        )
+    )
+    elements.extend(
+        _source_section(
+            "AI 安全雷达",
+            "🛡️",
+            security_advisory,
+            "安全公告",
+            "security_advisory_more",
+        )
+    )
+    elements.extend(
+        _source_section(
+            "模型 Hub 雷达",
+            "🧠",
+            model_hub,
+            "新模型",
+            "model_hub_more",
         )
     )
     elements.extend(
@@ -558,7 +674,11 @@ def build_cards(date_str: str, items: list[FrozenItem]) -> list[dict]:
         raise ValueError("cannot build a card without items")
     ordered_items = sorted(
         enumerate(items),
-        key=lambda pair: (SOURCE_ORDER.get(pair[1].source_type, len(SOURCE_ORDER)), pair[0]),
+        key=lambda pair: (
+            -pair[1].rank_score if pair[1].rank_score else 0,
+            SOURCE_ORDER.get(pair[1].source_type, len(SOURCE_ORDER)),
+            pair[0],
+        ),
     )
     cards: list[dict] = []
     current: list[FrozenItem] = []
