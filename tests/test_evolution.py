@@ -9,6 +9,8 @@ import unittest
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
+from zoneinfo import ZoneInfoNotFoundError
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -22,6 +24,7 @@ from radar.security_advisories import (
     load_security_advisory_config,
 )
 from radar.storage import SCHEMA_VERSION, Storage, atomic_write_json, atomic_write_text
+from radar.timezones import load_report_timezone
 from radar.trends import build_trend_report
 from radar.workflow import artifact_paths, daily_lock, evaluate_source_health, render_cards
 from package_skill import build_archive
@@ -43,6 +46,15 @@ class EvolutionTests(unittest.TestCase):
         self.assertGreaterEqual(len(models["organizations"]), 10)
         with self.storage._connect() as connection:
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], SCHEMA_VERSION)
+
+    def test_report_timezone_falls_back_to_utc_plus_eight(self) -> None:
+        with mock.patch(
+            "radar.timezones.ZoneInfo",
+            side_effect=ZoneInfoNotFoundError("Asia/Shanghai"),
+        ):
+            zone = load_report_timezone()
+        offset = datetime(2026, 8, 6, tzinfo=zone).utcoffset()
+        self.assertEqual(offset, timedelta(hours=8))
 
     def test_security_advisory_is_bounded_to_allowlist(self) -> None:
         config = {

@@ -7,7 +7,6 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from radar.approval import build_approval_card
 from radar.delivery import send_group_cards, send_personal_cards
@@ -19,6 +18,7 @@ from radar.subscriptions import (
     validate_batch,
 )
 from radar.sources import load_channels
+from radar.timezones import REPORT_TIMEZONE
 from radar.workflow import (
     artifact_paths,
     channels_file,
@@ -36,7 +36,7 @@ from radar.workflow import (
 
 
 def _date(value: str | None) -> str:
-    date_str = value or datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d")
+    date_str = value or datetime.now(REPORT_TIMEZONE).strftime("%Y-%m-%d")
     try:
         datetime.strptime(date_str, "%Y-%m-%d")
     except ValueError as error:
@@ -188,7 +188,7 @@ def _handle_subscription(args: argparse.Namespace) -> int:
         if not args.send:
             _print({"status": "valid", "cards": [card]})
             return 0
-        timestamp = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d-%H%M%S-%f")
+        timestamp = datetime.now(REPORT_TIMEZONE).strftime("%Y%m%d-%H%M%S-%f")
         code, result = _send_personal(
             [card], state_dir() / "receipts" / "subscriptions" / f"form-{timestamp}.json"
         )

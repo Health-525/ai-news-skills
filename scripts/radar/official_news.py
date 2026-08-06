@@ -15,14 +15,13 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Callable, NotRequired, TypedDict
 from xml.etree import ElementTree as ET
-from zoneinfo import ZoneInfo
 
 from .models import ContentItem, SourceCheck, SourceHealth
 from .storage import Storage
+from .timezones import REPORT_TIMEZONE
 from .url_utils import canonical_url, normalized_host
 
 Fetcher = Callable[[str, Storage], tuple[bytes, bool]]
-REPORT_TIMEZONE = ZoneInfo("Asia/Shanghai")
 COLLECTION_LOOKBACK_HOURS = 96
 MONTH_DATE_RE = re.compile(
     r"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
