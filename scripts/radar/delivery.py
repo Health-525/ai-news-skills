@@ -63,10 +63,10 @@ def _parse_bridge_payload(stdout: str) -> dict[str, object] | None:
     return None
 
 
-def _send_one(bridge: Path, target: str, card: dict) -> tuple[bool, str]:
+def _send_one(bridge: Path, target: str, card: dict) -> tuple[bool, str, str]:
     node = shutil.which("node")
     if not node:
-        return False, "Node.js is not available"
+        return False, "Node.js is not available", ""
     arguments = [
         node,
         str(bridge),
@@ -88,13 +88,20 @@ def _send_one(bridge: Path, target: str, card: dict) -> tuple[bool, str]:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
-        return False, str(error)
+        return False, str(error), ""
     if result.returncode != 0:
-        return False, (result.stderr or result.stdout or "native card send failed").strip()
+        return (
+            False,
+            (result.stderr or result.stdout or "native card send failed").strip(),
+            "",
+        )
     payload = _parse_bridge_payload(result.stdout)
     if payload is None:
-        return False, "native card bridge returned invalid JSON"
-    return (True, "") if payload.get("status") == "sent" else (False, "native card send was not acknowledged")
+        return False, "native card bridge returned invalid JSON", ""
+    message_id = str(payload.get("message_id", "")).strip()
+    if payload.get("status") != "sent" or not message_id:
+        return False, "native card send was not acknowledged with a message ID", ""
+    return True, "", message_id
 
 
 def send_cards(
@@ -138,6 +145,7 @@ def send_cards(
         if not matches:
             return 1, {"status": "failed", "error": "receipt does not match current cards or target"}
     sent_card_hashes = set(receipt.get("sent_card_hashes", [])) if receipt else set()
+    sent_messages = dict(receipt.get("sent_messages", {})) if receipt else {}
     try:
         retries = max(1, min(int(os.environ.get("AI_NEWS_CARD_RETRIES", "3")), 5))
     except ValueError:
@@ -148,7 +156,7 @@ def send_cards(
             continue
         last_error = "native card send failed"
         for attempt in range(retries):
-            success, error = _send_one(bridge, normalized_target, card)
+            success, error, message_id = _send_one(bridge, normalized_target, card)
             if success:
                 break
             last_error = error
@@ -161,6 +169,7 @@ def send_cards(
                 }
             time.sleep(2**attempt)
         sent_card_hashes.add(card_hash)
+        sent_messages[card_hash] = message_id
         atomic_write_json(
             receipt_path,
             {
@@ -169,6 +178,7 @@ def send_cards(
                 "target_hash": target_hash,
                 "cards_sha256": cards_hash,
                 "sent_card_hashes": sorted(sent_card_hashes),
+                "sent_messages": sent_messages,
                 "cards": len(cards),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             },
@@ -181,6 +191,7 @@ def send_cards(
             "target_hash": target_hash,
             "cards_sha256": cards_hash,
             "sent_card_hashes": card_hashes,
+            "sent_messages": sent_messages,
             "cards": len(cards),
             "sent_at": datetime.now(timezone.utc).isoformat(),
         },

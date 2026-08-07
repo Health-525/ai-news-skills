@@ -52,6 +52,13 @@ adoption, infrastructure changes, pricing, security, and concrete business impac
 education, generic commentary, speculative reactions, unrelated creator content, and minor patch
 noise.
 
+A high score alone is not a reason to highlight. Normally expand only records with
+`recommended_highlight=true`; override that recommendation only when the bounded source text shows
+a concrete decision, operational, security, pricing, availability, or customer-impact consequence
+that is absent from the already selected leaders. Stop selecting when the next record adds no new
+decision-relevant information. Routine case studies, generic reports, minor releases, and recovered
+items remain folded even when their source authority is high.
+
 Prioritize a reviewed high/critical advisory when it affects a widely used allowlisted dependency
 and provides a concrete remediation. Promote a new model-Hub record only when its metadata provides
 a distinct strategic signal; a repository appearing on an allowlist is not sufficient by itself.

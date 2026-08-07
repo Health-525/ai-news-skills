@@ -231,7 +231,7 @@ class EvolutionTests(unittest.TestCase):
             else:
                 os.environ["AI_NEWS_STATE_DIR"] = original_state
 
-    def test_card_renders_security_models_and_audience_labels(self) -> None:
+    def test_card_renders_security_and_models_without_internal_labels(self) -> None:
         items = [
             FrozenItem(
                 "ghsa",
@@ -265,7 +265,10 @@ class EvolutionTests(unittest.TestCase):
         card_text = json.dumps(build_card("2026-08-06", items), ensure_ascii=False)
         self.assertIn("AI 安全雷达", card_text)
         self.assertIn("模型 Hub 雷达", card_text)
-        self.assertIn("面向 security/engineering", card_text)
+        self.assertNotIn("面向 security/engineering", card_text)
+        self.assertNotIn("reviewed_advisory", card_text)
+        self.assertEqual(items[0].audiences, ("security", "engineering"))
+        self.assertEqual(items[0].evidence_level, "reviewed_advisory")
 
     def test_quality_gate_and_owner_feedback_feed_trends(self) -> None:
         checks = tuple(SourceCheck(f"source-{index}", "ok" if index < 7 else "error", 0) for index in range(10))

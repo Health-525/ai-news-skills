@@ -558,12 +558,15 @@ def enrich_and_rank_records(
         record["rank_reason"] = _rank_reason(record, age_hours, personalization)
         record["alert_level"] = _alert_level(record, age_hours)
         record["recommended_highlight"] = (
-            record["alert_level"] in {"critical", "breaking"}
-            or (
-                record.get("story_role") == "primary"
-                and float(record["rank_score"]) >= 68
+            record.get("source_text_status") == "available"
+            and record.get("story_role") == "primary"
+            and (
+                record["alert_level"] in {"critical", "breaking"}
+                or (
+                    record.get("change_type") in {"correction", "deprecation"}
+                    and float(record["rank_score"]) >= 74
+                )
             )
-            or record.get("change_type") in {"correction", "deprecation"}
         )
         record.pop("_story_tokens", None)
 

@@ -590,6 +590,24 @@ def main() -> int:
     assert len(changelog_items) == 1
     assert changelog_items[0].extra == "官方 Changelog"
     assert "structured tool calling" in changelog_items[0].raw_source_text
+    year_context_items = parse_official_changelog(
+        b"""<html><body>
+          <h3>August, 2024</h3><div>Aug 6</div>
+          <p>Historical structured outputs release must remain in 2024.</p>
+          <h3>August, 2026</h3><div>Aug 7</div>
+          <p>Current production API release with a complete migration path.</p>
+        </body></html>""",
+        {
+            "name": "Year Context API",
+            "kind": "html_changelog",
+            "url": "https://example.com/changelog-year-context",
+            "allowed_hosts": ["example.com"],
+        },
+        datetime(2026, 8, 4, 0, 0, tzinfo=timezone.utc),
+    )
+    assert len(year_context_items) == 1
+    assert year_context_items[0].published_at.date().isoformat() == "2026-08-07"
+    assert "Historical structured outputs" not in year_context_items[0].raw_source_text
     try:
         parse_official_changelog(
             b"<html><body><h2>Release notes</h2><p>No dated entries.</p></body></html>",
@@ -1293,18 +1311,18 @@ def main() -> int:
     ]
     section_card = build_card("2026-07-20", section_items)
     section_elements = section_card["body"]["elements"]
-    assert section_card["config"]["style"]["text_size"]["section_heading"] == {
-        "default": "heading",
-        "pc": "heading",
-        "mobile": "heading",
-    }
+    assert section_card["config"] == {"update_multi": True}
     source_headers = [
         element
         for element in section_elements
         if element.get("tag") == "markdown" and "text_size" in element
     ]
     assert len(source_headers) == 7
-    assert all(element.get("text_size") == "section_heading" for element in source_headers)
+    assert all(element.get("text_size") == "heading" for element in source_headers)
+    section_text = json.dumps(section_card, ensure_ascii=False)
+    assert "编辑评分" not in section_text
+    assert "原文语言" not in section_text
+    assert "事件链" not in section_text
 
     def element_position(marker: str) -> int:
         for index, element in enumerate(section_elements):
@@ -1350,6 +1368,7 @@ def main() -> int:
             summary=long_summary,
             recommendation="",
             highlight=True,
+            rank_score=90,
         )
         for source_type, source, url in (
             ("official_news", "官方发布 · Example", "https://example.com/news/split"),
@@ -1376,6 +1395,9 @@ def main() -> int:
     split_cards = build_cards("2026-07-20", split_items)
     assert len(split_cards) == 7
     split_text = [json.dumps(card, ensure_ascii=False) for card in split_cards]
+    assert sum("今日必看" in text for text in split_text) == 1
+    assert split_cards[0]["header"]["subtitle"]["content"] == "今日重点"
+    assert split_cards[1]["header"]["subtitle"]["content"] == "分类附录 2"
     assert "📡 官方发布" in split_text[0]
     assert "🎬 YouTube" in split_text[1]
     assert "📺 哔哩哔哩" in split_text[2]
@@ -1398,7 +1420,9 @@ def main() -> int:
         Path(__file__).resolve().parents[1] / "references" / "builders-x-accounts.json"
     )
     assert len(reference_accounts) == 26
-    assert _parse_bridge_payload('OpenClaw log\n{"status":"sent"}\n') == {"status": "sent"}
+    assert _parse_bridge_payload(
+        'OpenClaw log\n{"status":"sent","message_id":"message-test"}\n'
+    ) == {"status": "sent", "message_id": "message-test"}
     approval_card = build_approval_card("digest-test")
     assert "通过日报 digest-test" in approval_card["body"]["elements"][0]["content"]
     original_auto_group = os.environ.get("AI_NEWS_AUTO_GROUP_DELIVERY")

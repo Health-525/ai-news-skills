@@ -53,6 +53,12 @@ CHANGELOG_DATE_RE = re.compile(
     r"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?))(?:\s+(?P<day_year>20\d{2}))?",
     re.IGNORECASE,
 )
+CHANGELOG_SECTION_YEAR_RE = re.compile(
+    r"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|"
+    r"Dec(?:ember)?)\s*,?\s*(?P<year>20\d{2})\b",
+    re.IGNORECASE,
+)
 SEED_ROUTER_RE = re.compile(
     r"window\._ROUTER_DATA\s*=\s*(\{.*?\})\s*</script>",
     re.DOTALL,
@@ -542,7 +548,11 @@ def _month_date(value: str) -> tuple[datetime, bool] | None:
     return None
 
 
-def _changelog_date(value: str, cutoff: datetime) -> tuple[datetime, bool] | None:
+def _changelog_date(
+    value: str,
+    cutoff: datetime,
+    context_year: int | None = None,
+) -> tuple[datetime, bool] | None:
     match = CHANGELOG_DATE_RE.search(value)
     if not match:
         return None
@@ -580,7 +590,7 @@ def _changelog_date(value: str, cutoff: datetime) -> tuple[datetime, bool] | Non
     if not date_text:
         return None
     window_end = cutoff + timedelta(hours=COLLECTION_LOOKBACK_HOURS)
-    year = int(explicit_year) if explicit_year else window_end.year
+    year = int(explicit_year) if explicit_year else context_year or window_end.year
     formats = ("%b %d %Y", "%B %d %Y", "%d %b %Y", "%d %B %Y")
     normalized = f"{date_text.replace(',', '')} {year}"
     for date_format in formats:
@@ -715,6 +725,7 @@ def parse_official_changelog(
     content_tags = {"div", "h3", "h4", "h5", "h6", "li", "p", "span"}
     window_end = cutoff + timedelta(hours=COLLECTION_LOOKBACK_HOURS)
     current_date: datetime | None = None
+    current_year: int | None = None
     chunks_by_date: dict[str, list[str]] = {}
     saw_dated_entry = False
     saw_in_window_date = False
@@ -742,7 +753,16 @@ def parse_official_changelog(
             ):
                 chunks.append(cell)
     for tag, text in parser.events:
-        published = _changelog_date(text, cutoff) if tag in date_tags and len(text) <= 48 else None
+        section_year = CHANGELOG_SECTION_YEAR_RE.search(text)
+        if section_year is not None and tag in date_tags and len(text) <= 48:
+            current_year = int(section_year.group("year"))
+            current_date = None
+            continue
+        published = (
+            _changelog_date(text, cutoff, current_year)
+            if tag in date_tags and len(text) <= 48
+            else None
+        )
         if published is not None:
             saw_dated_entry = True
             published_at, _ = published

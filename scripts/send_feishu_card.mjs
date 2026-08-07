@@ -89,7 +89,7 @@ try {
   });
   const messageId = response?.messageId ?? response?.receipt?.primaryPlatformMessageId;
   if (!messageId) throw new Error("Feishu card send returned no message ID");
-  console.log(JSON.stringify({ status: "sent" }));
+  console.log(JSON.stringify({ status: "sent", message_id: messageId }));
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);

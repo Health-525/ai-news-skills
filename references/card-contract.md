@@ -12,15 +12,17 @@ The maintained Feishu card displays:
   advisories, model Hub, industry digest, then Builders X;
 - source section headers use the Feishu JSON 2.0 `heading` text size while item bodies retain the
   normal Markdown size;
-- a compact `全球 AI 核心事件` overview lists up to five ranked primary event leaders per card;
+- a compact `今日必看` overview appears only on the first card and lists up to five ranked primary
+  event leaders; subsequent cards are labeled as classification appendices;
 - records are packed into cards by global editorial score before they are grouped into the
   familiar source sections;
 - model-selected highlights expanded first inside each source section;
-- remaining records collapsed immediately after their source highlights;
+- remaining current-window records collapsed immediately after their source highlights, while
+  recovered records use a separate folded catch-up panel;
 - `来源摘要` and an optional source-provided recommendation;
-- deterministic signal type, evidence level, bounded topic tags, audience fit, editorial score,
-  alert level, change type, verification label, confidence, and event-chain/source-diversity counts for every
-  ranked item;
+- item bodies show only title, source, source-bounded summary, and an optional recommendation;
+  deterministic ranking and evidence metadata remain in the private source artifact rather than
+  being exposed in the daily reading surface;
 - the orange AI 前哨 header.
 
 The renderer splits oversized payloads instead of truncating records. Delivery hashes the rendered

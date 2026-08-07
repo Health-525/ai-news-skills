@@ -390,20 +390,6 @@ def _item_markdown(item: FrozenItem, index: int | None = None) -> str:
     lines = [
         f"**{prefix}[{_safe_title(item)}]({item.url})**",
         f"<font color='grey'>{_source_label(item)}</font>",
-        (
-            f"<font color='grey'>信号 {item.signal_type} · 证据 {item.evidence_level}"
-            f"{' · ' + '/'.join(item.topics[:3]) if item.topics else ''}"
-            f"{' · 面向 ' + '/'.join(item.audiences[:3]) if item.audiences else ''}</font>"
-        ),
-        f"<font color='grey'>原文语言 {item.language}</font>",
-        (
-            f"<font color='grey'>编辑评分 {item.rank_score:g} · "
-            f"{item.alert_level} · {item.change_type} · {item.verification_status} "
-            f"(置信 {item.confidence_score}) · "
-            f"事件链 {item.story_items} 条/{item.source_diversity} 源</font>"
-        )
-        if item.rank_score
-        else "",
         "**来源摘要**",
         _summary(item.summary),
     ]
@@ -417,26 +403,20 @@ def _priority_overview(items: list[FrozenItem]) -> list[dict]:
         (
             item
             for item in items
-            if item.rank_score > 0 and item.story_role == "primary"
+            if (
+                item.highlight
+                and item.recency_status == "current"
+                and item.rank_score > 0
+                and item.story_role == "primary"
+            )
         ),
         key=lambda item: (-item.rank_score, item.title.casefold()),
     )[:5]
     if not leaders:
         return []
-    labels = {
-        "critical": "严重",
-        "breaking": "突发",
-        "high": "高优先级",
-        "watch": "关注",
-        "normal": "常规",
-    }
-    lines = ["**🏆 全球 AI 核心事件**"]
+    lines = ["**🏆 今日必看**"]
     lines.extend(
-        (
-            f"{index}. [{_safe_title(item)}]({item.url})　"
-            f"`{item.rank_score:g}` · {labels.get(item.alert_level, item.alert_level)} · "
-            f"{item.verification_status}"
-        )
+        f"{index}. [{_safe_title(item)}]({item.url}) · {_source_label(item)}"
         for index, item in enumerate(leaders, start=1)
     )
     return [{"tag": "markdown", "content": "\n".join(lines)}]
@@ -475,12 +455,17 @@ def _source_section(
 ) -> list[dict]:
     if not items:
         return []
-    highlights = [item for item in items if item.highlight]
-    remaining = [item for item in items if not item.highlight]
+    highlights = [
+        item for item in items if item.highlight and item.recency_status == "current"
+    ]
+    remaining = [
+        item for item in items if not item.highlight and item.recency_status == "current"
+    ]
+    recovered = [item for item in items if item.recency_status == "recovered"]
     elements: list[dict] = [
         {
             "tag": "markdown",
-            "text_size": "section_heading",
+            "text_size": "heading",
             "content": (
                 f"**{icon} {label}**\n"
                 f"<font color='grey'>AI 判断 {len(highlights)} 条重点 · "
@@ -500,10 +485,24 @@ def _source_section(
                 element_id,
             )
         )
+    if recovered:
+        elements.append(
+            _collapsible(
+                f"补录 {len(recovered)} 条 {remaining_label}",
+                recovered,
+                f"{element_id}_recovered",
+            )
+        )
     return elements
 
 
-def build_card(date_str: str, items: list[FrozenItem]) -> dict:
+def build_card(
+    date_str: str,
+    items: list[FrozenItem],
+    *,
+    show_overview: bool = True,
+    card_index: int = 1,
+) -> dict:
     try:
         parsed_date = datetime.strptime(date_str, "%Y-%m-%d")
     except ValueError as error:
@@ -554,7 +553,8 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
             ),
         }
     ]
-    elements.extend(_priority_overview(items))
+    if show_overview:
+        elements.extend(_priority_overview(items))
     elements.extend(
         _source_section(
             "官方发布",
@@ -645,19 +645,13 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
     display_date = f"{parsed_date.year}年{parsed_date.month}月{parsed_date.day}日"
     return {
         "schema": "2.0",
-        "config": {
-            "style": {
-                "text_size": {
-                    "section_heading": {
-                        "default": "heading",
-                        "pc": "heading",
-                        "mobile": "heading",
-                    }
-                }
-            }
-        },
+        "config": {"update_multi": True},
         "header": {
             "template": "orange",
+            "subtitle": {
+                "tag": "plain_text",
+                "content": "今日重点" if show_overview else f"分类附录 {card_index}",
+            },
             "title": {"tag": "plain_text", "content": f"📗 AI 前哨｜{display_date}"},
         },
         "body": {
@@ -680,20 +674,34 @@ def build_cards(date_str: str, items: list[FrozenItem]) -> list[dict]:
             pair[0],
         ),
     )
-    cards: list[dict] = []
+    card_items: list[list[FrozenItem]] = []
     current: list[FrozenItem] = []
     for _, item in ordered_items:
         candidate = [*current, item]
-        candidate_card = build_card(date_str, candidate)
+        candidate_card = build_card(
+            date_str,
+            candidate,
+            show_overview=not card_items,
+            card_index=len(card_items) + 1,
+        )
         size = len(json.dumps(candidate_card, ensure_ascii=False).encode("utf-8"))
         if current and size > MAX_CARD_BYTES:
-            cards.append(build_card(date_str, current))
+            card_items.append(current)
             current = [item]
         else:
             current = candidate
     if current:
-        card = build_card(date_str, current)
+        card_items.append(current)
+    cards = [
+        build_card(
+            date_str,
+            group,
+            show_overview=index == 1,
+            card_index=index,
+        )
+        for index, group in enumerate(card_items, start=1)
+    ]
+    for card in cards:
         if len(json.dumps(card, ensure_ascii=False).encode("utf-8")) > MAX_CARD_BYTES:
             raise ValueError("one digest item exceeds the Feishu card size limit")
-        cards.append(card)
     return cards
