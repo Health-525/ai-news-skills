@@ -789,6 +789,9 @@ def parse_official_changelog(
             continue
         published_at = datetime.fromisoformat(date_key).replace(tzinfo=timezone.utc)
         identity = f"{source['name']}:{date_key}"
+        dated_url = urllib.parse.urlunsplit(
+            urllib.parse.urlsplit(url)._replace(fragment=date_key)
+        )
         items.append(
             ContentItem(
                 item_id=hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24],
@@ -796,7 +799,7 @@ def parse_official_changelog(
                 source=f"官方发布 · {source['name']}",
                 title=f"{source['name']} · {date_key} 更新",
                 published_at=published_at,
-                url=url,
+                url=dated_url,
                 raw_source_text=source_text,
                 extra="官方 Changelog",
             )

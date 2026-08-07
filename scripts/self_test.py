@@ -589,6 +589,7 @@ def main() -> int:
     )
     assert len(changelog_items) == 1
     assert changelog_items[0].extra == "官方 Changelog"
+    assert changelog_items[0].url.endswith("#2026-07-21")
     assert "structured tool calling" in changelog_items[0].raw_source_text
     year_context_items = parse_official_changelog(
         b"""<html><body>
@@ -607,6 +608,7 @@ def main() -> int:
     )
     assert len(year_context_items) == 1
     assert year_context_items[0].published_at.date().isoformat() == "2026-08-07"
+    assert year_context_items[0].url.endswith("#2026-08-07")
     assert "Historical structured outputs" not in year_context_items[0].raw_source_text
     try:
         parse_official_changelog(
