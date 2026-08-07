@@ -394,6 +394,8 @@ def main() -> int:
         datetime(2026, 7, 20, 0, 0, tzinfo=timezone.utc),
     )
     assert len(parsed_release_notes) == 2
+    assert len({item.url for item in parsed_release_notes}) == 2
+    assert all("#entry-" in item.url for item in parsed_release_notes)
     assert len({item.dedup_identity for item in parsed_release_notes}) == 2
     assert all(item.extra == "官方 Release Notes" for item in parsed_release_notes)
     industry_rss = b"""<?xml version="1.0" encoding="UTF-8"?>

@@ -679,6 +679,11 @@ def parse_official_feed(
             continue
         url_key = canonical_url(link)
         item_id = hashlib.sha256((guid or url_key).encode("utf-8")).hexdigest()[:24]
+        item_url = link
+        if source.get("preserve_feed_entries"):
+            item_url = urllib.parse.urlunsplit(
+                urllib.parse.urlsplit(link)._replace(fragment=f"entry-{item_id}")
+            )
         extra = (
             "官方 Release Notes"
             if source.get("preserve_feed_entries")
@@ -691,7 +696,7 @@ def parse_official_feed(
                 source=f"官方发布 · {source['name']}",
                 title=_clean_text(title),
                 published_at=published_at,
-                url=link,
+                url=item_url,
                 raw_source_text=_html_to_text(description),
                 extra=extra,
             )
