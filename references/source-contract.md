@@ -183,9 +183,8 @@ Optional environment variables:
 - `AI_NEWS_FEISHU_GROUP_TARGET`: configured group target.
 - `AI_NEWS_AUTO_GROUP_DELIVERY`: explicit opt-in for approval-free scheduled group delivery;
   accepted true values are `1`, `true`, `yes`, and `on`.
-- `AI_NEWS_RELEASE_ANNOUNCEMENTS`: explicit opt-in for post-deployment group update cards. A real
-  announcement additionally requires an exact deployed-commit match and an idempotent version
-  receipt.
+- `AI_NEWS_RELEASE_ANNOUNCEMENTS`: manual release-notice opt-in. Keep it disabled in production;
+  enabling and sending a notice requires a separate explicit owner request for the exact version.
 - `AI_NEWS_OWNER_ID`: authenticated owner identity used for proposal and draft authorization.
 - `OPENCLAW_FEISHU_ACCOUNT_ID`: optional configured Feishu account name.
 - `OPENCLAW_FEISHU_SEND_MODULE` and `OPENCLAW_CONFIG_MODULE`: native-card compatibility overrides.

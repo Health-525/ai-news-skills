@@ -1,6 +1,6 @@
 ---
 name: ai-news-skills
-description: Collect first-party AI announcements, API changelogs, reviewed security advisories, allowlisted Hugging Face model metadata, regulatory updates, editorial newsletters, video publisher descriptions, AIHOT, GitHub radar, and curated Builders X posts; cluster signals into update-aware events; rank them by authority, freshness, impact, verification, novelty, and authenticated owner feedback; produce breaking briefs, evidence-bounded Chinese daily cards, and multi-day trends; and deliver validated digests to Feishu. Use for AI 前哨、AI 风向标、全球 AI 新闻、突发预警、安全雷达、模型雷达、监管动态、GitHub 开源雷达、行业周报、RSS 日报、YouTube/X 动态、频道订阅、趋势复盘、定时飞书个人预览及审批后群发布。 Never fetch captions, download media, transcribe videos, or use transcript/S3 handoffs.
+description: Collect first-party AI announcements, API changelogs, reviewed security advisories, allowlisted Hugging Face model metadata, regulatory updates, editorial newsletters, video publisher descriptions, AIHOT, GitHub radar, and curated Builders X posts; cluster signals into update-aware events; rank them by authority, freshness, impact, verification, novelty, and authenticated owner feedback; produce breaking briefs, evidence-bounded Chinese daily cards, and multi-day trends; and deliver validated digests to Feishu. Use for AI 前哨、AI 风向标、全球 AI 新闻、突发预警、安全雷达、模型雷达、监管动态、GitHub 开源雷达、行业周报、RSS 日报、YouTube/X 动态、频道订阅、趋势复盘和定时飞书群投递。 Never fetch captions, download media, transcribe videos, or use transcript/S3 handoffs.
 ---
 
 # AI News Skills
@@ -24,10 +24,10 @@ print target identifiers or private runtime values.
    This minimum is not a maximum or fixed mix. Use `recommended_highlight=true` as a strong signal;
    do not highlight unavailable records or corroborating copies unless they contain a material update.
 5. Run `python {baseDir}/scripts/daily_pipeline.py card YYYY-MM-DD`; fix the Markdown until valid.
-6. Run `python {baseDir}/scripts/daily_pipeline.py preview YYYY-MM-DD`.
-7. Treat structured `sent` or matching `skipped` as successful scheduled personal delivery. Report counts
+6. Run `python {baseDir}/scripts/daily_pipeline.py scheduled-group YYYY-MM-DD`.
+7. Treat structured `sent` or matching `skipped` as successful scheduled group delivery. Report counts
    for official, security, model Hub, GitHub, editorial, video, and social signals without exposing
-   identifiers. Stop after the personal preview; never approve or send to a group from the cron run.
+   identifiers. Do not create a personal preview or approval draft from the cron run.
 
 Run `doctor --live` only for explicit operational checks or scheduled source audits; it probes
 remote endpoints and may take about one minute. Do not add it to every daily run.
@@ -72,12 +72,8 @@ never a command argument. Approval sends only the exact cards frozen in that dra
 
 ## Release routing
 
-After every verified production deployment, create a private schema-version-1 release manifest
-outside the Skill and run `python {baseDir}/scripts/daily_pipeline.py release-announcement
---manifest FILE`. The manifest must use the exact full deployed Git commit and contain a concise
-title, summary, changes, and verification results. Treat only structured `sent` or matching
-`skipped` as a complete release announcement. Never send before the production marker is switched
-and post-deployment tests pass.
+Production deployments are silent. Never call `release-announcement` as part of deployment. Run it
+only when the authenticated owner explicitly requests a release notice for that exact version.
 
 ## Hard boundaries
 
@@ -100,11 +96,10 @@ and post-deployment tests pass.
   safety, benchmark, or adoption evidence. Do not fetch model files or execute model code.
 - Never summarize an unavailable record or infer details from its title.
 - Label summaries `来源摘要`, never `事实摘要` or `字幕摘要`.
-- Scheduled execution must stop after `preview`. Group publication requires fresh approval from
-  the same authenticated owner for the exact frozen draft.
-- Release announcements are allowed only through `release-announcement`, require a manifest that
-  matches `.deployment-commit`, and require explicit external enablement. Never accept a target from
-  the manifest or command line.
+- Scheduled execution may send directly only through `scheduled-group` when external runtime
+  configuration explicitly enables it. Manual group publication still requires owner approval.
+- Release announcements are disabled by default and must never be sent automatically after a
+  deployment. They require a separate explicit owner request for the exact deployed version.
 - Never modify OpenClaw/Feishu configuration during normal Skill execution.
 - Keep credentials, targets, state, reports, receipts, and caches outside the Skill.
 
