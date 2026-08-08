@@ -9,8 +9,9 @@ needed only for evidence-bounded Chinese summaries and highlight selection.
 2. Run `prepare DATE`; stop on `failed` and report sanitized source health.
 3. Read only the dated source JSON. Do not browse or use prior knowledge.
 4. Write every record to frozen Markdown in `rank_position` order. Keep unavailable records exact
-   and choose highlights without a fixed count or source quota. Evaluate every populated source
-   section independently, start from `recommended_highlight`, keep one primary leader per event,
+   and choose highlights without a fixed maximum or source quota. Give every source section with at
+   least one available current record at least one highlight; zero is allowed only when that section
+   has no available current record. Start from `recommended_highlight`, keep one primary leader per event,
    and apply the company relevance and marginal-value diversity rules in `editorial-policy.md`.
    Do not select weak evidence merely to fill a section. Corroborating records normally remain
    folded unless they add distinct decision-relevant information. Label `recovered` records as
@@ -35,7 +36,8 @@ their latency or generated artifacts to the isolated daily delivery transaction.
 Use $ai-news-skills. Run the complete source-only daily workflow for today's Asia/Shanghai date.
 Stop on doctor errors. Summarize only available source_text, keep unavailable records exact,
 choose company-relevant highlights independently within every populated source section using
-marginal-value diversity without a fixed quota, preserve rank_position order, use recommended
+marginal-value diversity without a fixed maximum, require at least one highlight in every section
+that has an available current record, preserve rank_position order, use recommended
 primary event leaders as a strong starting point without letting one source suppress all other
 sections, and never promote weak evidence merely for balance,
 label recovered overlap records as catch-up coverage rather than current-window news,

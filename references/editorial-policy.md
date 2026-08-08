@@ -59,11 +59,12 @@ that is absent from the already selected leaders. Stop selecting when the next r
 decision-relevant information. Routine case studies, generic reports, minor releases, and recovered
 items remain folded even when their source authority is high.
 
-Evaluate each populated source section independently. A burst of highly ranked official or
-security records must not prevent a distinct company-relevant YouTube, AIHOT, GitHub,
-industry, model Hub, or Builders X record from being highlighted. This is a marginal-value check,
-not a requirement to fill every section; weak, unavailable, duplicative, or speculative evidence
-remains folded.
+Evaluate each populated source section independently. Every section with at least one available
+current record must have at least one highlight; zero is allowed only when the section has no
+available current record. This is a minimum coverage gate, not a maximum or fixed source mix.
+A burst of highly ranked official or security records must not suppress a distinct company-relevant
+YouTube, AIHOT, GitHub, industry, model Hub, or Builders X record. Never highlight an unavailable
+record; choose the strongest available current record when a section contains only weak candidates.
 
 Prioritize a reviewed high/critical advisory when it affects a widely used allowlisted dependency
 and provides a concrete remediation. Promote a new model-Hub record only when its metadata provides

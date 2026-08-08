@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from radar.huggingface_radar import fetch_huggingface_models, load_huggingface_radar_config
-from radar.digest import FrozenItem, build_card
+from radar.digest import FrozenItem, build_card, build_cards
 from radar.intelligence import classify_item, verify_source_payload
 from radar.models import ContentItem, SourceCheck, SourceHealth
 from radar.security_advisories import (
@@ -269,6 +269,56 @@ class EvolutionTests(unittest.TestCase):
         self.assertNotIn("reviewed_advisory", card_text)
         self.assertEqual(items[0].audiences, ("security", "engineering"))
         self.assertEqual(items[0].evidence_level, "reviewed_advisory")
+
+    def test_cards_separate_current_and_recovered_with_compact_folds(self) -> None:
+        items = [
+            FrozenItem(
+                "current-highlight",
+                "official_news",
+                "官方发布 · Example",
+                "Current highlight",
+                "https://example.com/current-highlight",
+                "Current highlight full summary.",
+                "",
+                True,
+            ),
+            FrozenItem(
+                "current-folded",
+                "youtube",
+                "YouTube · Example",
+                "Current folded item",
+                "https://example.com/current-folded",
+                "Current folded summary must not consume card space.",
+                "",
+                False,
+            ),
+            FrozenItem(
+                "recovered-folded",
+                "aihot",
+                "AIHOT · Example",
+                "Recovered folded item",
+                "https://example.com/recovered-folded",
+                "Recovered summary must not consume card space.",
+                "",
+                False,
+                recency_status="recovered",
+            ),
+        ]
+
+        cards = build_cards("2026-08-08", items)
+
+        self.assertEqual(len(cards), 2)
+        current_text = json.dumps(cards[0], ensure_ascii=False)
+        recovered_text = json.dumps(cards[1], ensure_ascii=False)
+        self.assertIn("📗 AI 前哨｜", current_text)
+        self.assertIn("Current highlight full summary.", current_text)
+        self.assertIn("Current folded item", current_text)
+        self.assertNotIn("Current folded summary", current_text)
+        self.assertIn("📙 AI 前哨补录｜", recovered_text)
+        self.assertIn("Recovered folded item", recovered_text)
+        self.assertNotIn("Recovered summary", recovered_text)
+        self.assertLess(len(json.dumps(cards[0], ensure_ascii=False).encode("utf-8")), 25_000)
+        self.assertLess(len(json.dumps(cards[1], ensure_ascii=False).encode("utf-8")), 25_000)
 
     def test_quality_gate_and_owner_feedback_feed_trends(self) -> None:
         checks = tuple(SourceCheck(f"source-{index}", "ok" if index < 7 else "error", 0) for index in range(10))

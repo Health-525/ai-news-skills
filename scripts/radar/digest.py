@@ -287,6 +287,8 @@ def validate_frozen_digest(source_payload: dict, markdown: str) -> list[FrozenIt
         raise ValueError(f"frozen digest source mismatch: missing={missing}, invented={invented}")
 
     frozen: list[FrozenItem] = []
+    eligible_current_sources: set[str] = set()
+    highlighted_current_sources: set[str] = set()
     for item in parsed:
         record = by_url[item["url"]]
         required = ("source", "highlight", "summary")
@@ -304,6 +306,8 @@ def validate_frozen_digest(source_payload: dict, markdown: str) -> list[FrozenIt
             expected = f"不可用（{record.get('unavailable_reason', '')}）"
             if item["summary"] != expected:
                 raise ValueError("unavailable source must keep its exact unavailable reason")
+            if item["highlight"] == "是":
+                raise ValueError("unavailable source cannot be a highlight")
         elif status == "available":
             if item["summary"].startswith("不可用"):
                 raise ValueError("available source requires a source-bounded summary")
@@ -314,6 +318,11 @@ def validate_frozen_digest(source_payload: dict, markdown: str) -> list[FrozenIt
         recency_status = str(record.get("recency_status", "current"))
         if recency_status not in {"current", "recovered"}:
             raise ValueError("source record has an unknown recency_status")
+        source_type = str(record.get("source_type", ""))
+        if recency_status == "current" and status == "available":
+            eligible_current_sources.add(source_type)
+        if recency_status == "current" and item["highlight"] == "是":
+            highlighted_current_sources.add(source_type)
 
         recommendation = item.get("recommendation", "").strip()
         source_recommendation = str(record.get("recommendation", "")).strip()
@@ -322,7 +331,7 @@ def validate_frozen_digest(source_payload: dict, markdown: str) -> list[FrozenIt
         frozen.append(
             FrozenItem(
                 item_id=str(record.get("id", "")),
-                source_type=str(record.get("source_type", "")),
+                source_type=source_type,
                 source=item["source"].strip(),
                 title=item["title"].strip(),
                 url=item["url"].strip(),
@@ -361,6 +370,15 @@ def validate_frozen_digest(source_payload: dict, markdown: str) -> list[FrozenIt
                 change_type=str(record.get("change_type", "report")),
             )
         )
+    missing_highlights = sorted(
+        eligible_current_sources - highlighted_current_sources,
+        key=lambda source_type: SOURCE_ORDER.get(source_type, len(SOURCE_ORDER)),
+    )
+    if missing_highlights:
+        raise ValueError(
+            "every populated current source section requires at least one highlight: "
+            + ", ".join(missing_highlights)
+        )
     return frozen
 
 
@@ -398,6 +416,13 @@ def _item_markdown(item: FrozenItem, index: int | None = None) -> str:
     return "\n".join(lines)
 
 
+def _compact_items_markdown(items: list[FrozenItem]) -> str:
+    return "\n".join(
+        f"{index}. [{_safe_title(item)}]({item.url}) · {_source_label(item)}"
+        for index, item in enumerate(items, start=1)
+    )
+
+
 def _collapsible(title: str, items: list[FrozenItem], element_id: str) -> dict:
     return {
         "tag": "collapsible_panel",
@@ -417,7 +442,7 @@ def _collapsible(title: str, items: list[FrozenItem], element_id: str) -> dict:
         "border": {"color": "grey", "corner_radius": "8px"},
         "padding": "8px 10px 8px 10px",
         "elements": [
-            {"tag": "markdown", "content": _item_markdown(item)} for item in items
+            {"tag": "markdown", "content": _compact_items_markdown(items)}
         ],
     }
 
@@ -438,14 +463,19 @@ def _source_section(
         item for item in items if not item.highlight and item.recency_status == "current"
     ]
     recovered = [item for item in items if item.recency_status == "recovered"]
+    recovered_only = len(recovered) == len(items)
+    section_status = (
+        f"补录 {len(items)} 条"
+        if recovered_only
+        else f"AI 判断 {len(highlights)} 条重点 · 共 {len(items)} 条"
+    )
     elements: list[dict] = [
         {
             "tag": "markdown",
             "text_size": "section_heading",
             "content": (
                 f"**{icon} {label}**\n"
-                f"<font color='grey'>AI 判断 {len(highlights)} 条重点 · "
-                f"共 {len(items)} 条</font>"
+                f"<font color='grey'>{section_status}</font>"
             ),
         }
     ]
@@ -503,14 +533,23 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
         != len(items)
     ):
         raise ValueError("card contains an unsupported source type")
-    highlights = [item for item in items if item.highlight]
+    highlights = [
+        item for item in items if item.highlight and item.recency_status == "current"
+    ]
     current_count = sum(item.recency_status == "current" for item in items)
     recovered_count = len(items) - current_count
+    recovered_only = recovered_count == len(items)
+    overview_title = "补录" if recovered_only else "今日最新"
+    overview_note = (
+        "以下为漏报补录，不属于当期 24 小时窗口"
+        if recovered_only
+        else f"模型判断 {len(highlights)} 条重点，其余按需展开"
+    )
     elements: list[dict] = [
         {
             "tag": "markdown",
             "content": (
-                f"**本卡 {len(items)} 条信号**　当期 {current_count} · "
+                f"**{overview_title} {len(items)} 条信号**　当期 {current_count} · "
                 f"补录 {recovered_count}\n"
                 f"官方 {len(official_news)} · "
                 f"YouTube {len(youtube)} · "
@@ -518,7 +557,7 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
                 f"安全 {len(security_advisory)} · 模型 {len(model_hub)} · "
                 f"行业精选 {len(industry_digest)} · "
                 f"X {len(builders_x)}\n"
-                f"<font color='grey'>模型判断 {len(highlights)} 条重点，其余按需展开</font>"
+                f"<font color='grey'>{overview_note}</font>"
             ),
         }
     ]
@@ -610,6 +649,7 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
         }
     )
     display_date = f"{parsed_date.year}年{parsed_date.month}月{parsed_date.day}日"
+    header_title = "📙 AI 前哨补录" if recovered_only else "📗 AI 前哨"
     return {
         "schema": "2.0",
         "config": {
@@ -626,7 +666,7 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
         },
         "header": {
             "template": "orange",
-            "title": {"tag": "plain_text", "content": f"📗 AI 前哨｜{display_date}"},
+            "title": {"tag": "plain_text", "content": f"{header_title}｜{display_date}"},
         },
         "body": {
             "direction": "vertical",
@@ -644,20 +684,36 @@ def build_cards(date_str: str, items: list[FrozenItem]) -> list[dict]:
         enumerate(items),
         key=lambda pair: (SOURCE_ORDER.get(pair[1].source_type, len(SOURCE_ORDER)), pair[0]),
     )
-    cards: list[dict] = []
-    current: list[FrozenItem] = []
-    for _, item in ordered_items:
-        candidate = [*current, item]
-        candidate_card = build_card(date_str, candidate)
-        size = len(json.dumps(candidate_card, ensure_ascii=False).encode("utf-8"))
-        if current and size > MAX_CARD_BYTES:
-            cards.append(build_card(date_str, current))
-            current = [item]
-        else:
-            current = candidate
-    if current:
-        card = build_card(date_str, current)
-        if len(json.dumps(card, ensure_ascii=False).encode("utf-8")) > MAX_CARD_BYTES:
-            raise ValueError("one digest item exceeds the Feishu card size limit")
-        cards.append(card)
+    ordered = [item for _, item in ordered_items]
+
+    def pack(group: list[FrozenItem]) -> list[dict]:
+        if not group:
+            return []
+        grouped_card = build_card(date_str, group)
+        if len(json.dumps(grouped_card, ensure_ascii=False).encode("utf-8")) <= MAX_CARD_BYTES:
+            return [grouped_card]
+
+        packed: list[dict] = []
+        current: list[FrozenItem] = []
+        for item in group:
+            candidate = [*current, item]
+            candidate_card = build_card(date_str, candidate)
+            size = len(json.dumps(candidate_card, ensure_ascii=False).encode("utf-8"))
+            if current and size > MAX_CARD_BYTES:
+                packed.append(build_card(date_str, current))
+                current = [item]
+            else:
+                current = candidate
+        if current:
+            card = build_card(date_str, current)
+            if len(json.dumps(card, ensure_ascii=False).encode("utf-8")) > MAX_CARD_BYTES:
+                raise ValueError("one digest item exceeds the Feishu card size limit")
+            packed.append(card)
+        return packed
+
+    current_items = [item for item in ordered if item.recency_status == "current"]
+    recovered_items = [item for item in ordered if item.recency_status == "recovered"]
+    cards = [*pack(current_items), *pack(recovered_items)]
+    if not cards:
+        raise ValueError("cannot build a card without items")
     return cards

@@ -19,9 +19,10 @@ print target identifiers or private runtime values.
    [references/newsroom-intelligence.md](references/newsroom-intelligence.md), then write every
    record to the returned `digest_file` in `rank_position` order. Evaluate highlights within every
    populated source section so a globally dominant source cannot suppress a distinct, useful item
-   from another section. Use `recommended_highlight=true` as a strong signal rather than a quota;
-   do not promote weak evidence merely for balance or highlight corroborating copies unless they
-   contain a material update.
+   from another section. Every source section with at least one available current record must have
+   at least one highlight; zero is allowed only when the section has no available current record.
+   This minimum is not a maximum or fixed mix. Use `recommended_highlight=true` as a strong signal;
+   do not highlight unavailable records or corroborating copies unless they contain a material update.
 5. Run `python {baseDir}/scripts/daily_pipeline.py card YYYY-MM-DD`; fix the Markdown until valid.
 6. Run `python {baseDir}/scripts/daily_pipeline.py preview YYYY-MM-DD`.
 7. Treat structured `sent` or matching `skipped` as successful scheduled personal delivery. Report counts

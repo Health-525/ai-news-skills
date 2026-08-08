@@ -9,6 +9,7 @@ import json
 import os
 import tempfile
 from contextlib import redirect_stdout
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -797,9 +798,11 @@ def main() -> int:
 """
     items = validate_frozen_digest(source, markdown)
     cards = build_cards("2026-07-20", items)
-    assert len(items) == 2 and len(cards) == 1
-    card_intro = cards[0]["body"]["elements"][0]["content"]
-    assert "本卡 2 条信号" in card_intro and "当期 1 · 补录 1" in card_intro
+    assert len(items) == 2 and len(cards) == 2
+    current_intro = cards[0]["body"]["elements"][0]["content"]
+    recovered_intro = cards[1]["body"]["elements"][0]["content"]
+    assert "今日最新 1 条信号" in current_intro and "当期 1 · 补录 0" in current_intro
+    assert "补录 1 条信号" in recovered_intro and "当期 0 · 补录 1" in recovered_intro
 
     numeric_source = {
         "items": [
@@ -822,10 +825,30 @@ def main() -> int:
 
 ### 1. [Startup raises $20 million](https://example.com/numeric-1)
 - 来源：行业精选 · Example
-- 重点：否
+- 重点：是
 - 来源摘要：该公司在 18 个月后融资 2000 万美元。
 """
     validate_frozen_digest(numeric_source, numeric_markdown)
+    try:
+        validate_frozen_digest(
+            numeric_source,
+            numeric_markdown.replace("- 重点：是", "- 重点：否"),
+        )
+    except ValueError as error:
+        assert "requires at least one highlight" in str(error)
+    else:
+        raise AssertionError("a populated current section accepted zero highlights")
+
+    unavailable_current_source = {"items": [dict(source["items"][1])]}
+    unavailable_current_source["items"][0]["recency_status"] = "current"
+    unavailable_current_markdown = """# AI 前哨 | 2026-07-20
+
+### 1. [Unavailable update](https://example.com/item-2)
+- 来源：AIHOT · Example
+- 重点：否
+- 来源摘要：不可用（RSS 未提供足够的可用简介）
+"""
+    validate_frozen_digest(unavailable_current_source, unavailable_current_markdown)
     unsupported_numeric_source = json.loads(json.dumps(numeric_source))
     unsupported_numeric_source["items"][0]["title"] = "Startup raises $7.9 million"
     unsupported_numeric_source["items"][0]["source_text"] = (
@@ -1266,6 +1289,8 @@ def main() -> int:
     assert "编辑评分" not in section_text
     assert "原文语言" not in section_text
     assert "事件链" not in section_text
+    assert "Official remaining" in section_text
+    assert "Official remaining summary" not in section_text
 
     def element_position(marker: str) -> int:
         for index, element in enumerate(section_elements):
@@ -1300,6 +1325,26 @@ def main() -> int:
         < element_position("X priority")
         < element_position("其余 1 条 Builders X 动态")
     )
+    recovered_item = replace(
+        section_items[0],
+        item_id="official-recovered",
+        title="Recovered official update",
+        url="https://example.com/news/recovered",
+        summary="补录（2026-07-19）：Recovered official summary",
+        highlight=False,
+        recency_status="recovered",
+    )
+    window_cards = build_cards("2026-07-20", [*section_items, recovered_item])
+    assert len(window_cards) == 2
+    assert window_cards[0]["header"]["title"]["content"].startswith("📗 AI 前哨｜")
+    assert window_cards[1]["header"]["title"]["content"].startswith("📙 AI 前哨补录｜")
+    assert "Recovered official update" not in json.dumps(
+        window_cards[0], ensure_ascii=False
+    )
+    recovered_text = json.dumps(window_cards[1], ensure_ascii=False)
+    assert "Recovered official update" in recovered_text
+    assert "Recovered official summary" not in recovered_text
+    assert "不属于当期 24 小时窗口" in recovered_text
     long_summary = "signal " * 2_200
     split_items = [
         FrozenItem(
