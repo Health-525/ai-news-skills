@@ -5,8 +5,8 @@
 Each record is independent. Restate only its `source_text`; never transfer evidence between records.
 Official-news text is the named vendor's RSS description, dated changelog entry, first-party
 abstract, or public page metadata, but vendor claims remain attributed vendor claims rather than
-independent verification. YouTube RSS descriptions and Bilibili submission descriptions are
-publisher-provided descriptions, not transcripts or verified video contents. AIHOT summaries are
+independent verification. YouTube RSS descriptions are publisher-provided descriptions, not
+transcripts or verified video contents. AIHOT summaries are
 source-provided selected-item text. Industry digest text is publisher-provided editorial synthesis,
 not first-party evidence for the companies or research it discusses. GitHub radar text is an
 official API metadata snapshot combined with the repository owner's description; Star growth is a
@@ -60,7 +60,7 @@ decision-relevant information. Routine case studies, generic reports, minor rele
 items remain folded even when their source authority is high.
 
 Evaluate each populated source section independently. A burst of highly ranked official or
-security records must not prevent a distinct company-relevant YouTube, Bilibili, AIHOT, GitHub,
+security records must not prevent a distinct company-relevant YouTube, AIHOT, GitHub,
 industry, model Hub, or Builders X record from being highlighted. This is a marginal-value check,
 not a requirement to fill every section; weak, unavailable, duplicative, or speculative evidence
 remains folded.
@@ -83,7 +83,7 @@ them folded; highlight one only when it represents a material product, pricing, 
 availability change that the digest did not previously deliver.
 
 Claims about attacks, attribution, leaked or unreleased models, financing, regulation, legal action,
-or customer impact require stronger handling when they come from AIHOT, GitHub radar, industry digests, YouTube, Bilibili,
+or customer impact require stronger handling when they come from AIHOT, GitHub radar, industry digests, YouTube,
 or Builders X. Do not make such a record a highlight unless the same dated source set contains
 direct first-party evidence or independent corroboration from another credible publisher. If a
 secondary claim conflicts with first-party evidence, keep the secondary record as a non-highlight,

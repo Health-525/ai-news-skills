@@ -16,14 +16,14 @@ needed only for evidence-bounded Chinese summaries and highlight selection.
    folded unless they add distinct decision-relevant information. Label `recovered` records as
    catch-up coverage and do not present them as current-window updates.
 5. Run `card DATE` and correct validation failures.
-6. Run `scheduled-group DATE`. This validates the frozen cards again and sends them directly to the
-   configured group only when `AI_NEWS_AUTO_GROUP_DELIVERY` is explicitly enabled.
-7. Stop. Do not call `preview` or `approve` from the cron run.
+6. Run `preview DATE`. This validates the frozen cards, stores an owner-bound approval draft, and
+   sends the digest plus approval controls only to the configured personal target.
+7. Stop. Never call `approve` or any group-delivery command from the cron run.
 
 Success requires structured `sent` or a matching `skipped` receipt. Report total, official news,
-security advisories, model Hub, YouTube, Bilibili, AIHOT, GitHub radar, industry digest, Builders X,
-available, unavailable, highlights, publication-gate result, source failures, card count, and group
-delivery status. Never expose credentials or identifiers.
+security advisories, model Hub, YouTube, AIHOT, GitHub radar, industry digest, Builders X, available,
+unavailable, highlights, publication-gate result, source failures, card count, and personal-preview
+status. Never expose credentials or identifiers.
 
 Run `doctor --live`, `breaking-report DATE`, and `trend-report DATE --days 7` in separate
 intelligence or maintenance sessions. Do not add
@@ -39,10 +39,11 @@ marginal-value diversity without a fixed quota, preserve rank_position order, us
 primary event leaders as a strong starting point without letting one source suppress all other
 sections, and never promote weak evidence merely for balance,
 label recovered overlap records as catch-up coverage rather than current-window news,
-validate the native cards, and call scheduled-group for the configured group. Treat domestic and
+validate the native cards, and call preview for the configured personal target. Treat domestic and
 international official releases, stable GitHub releases, and API changelogs as
 attributed vendor claims, not independent verification. Treat industry digests as attributed
 editorial synthesis. Treat GitHub radar descriptions as repository-owner claims and Star growth as
-a popularity signal, not a quality or security review. Never fetch transcripts, use S3, send a personal preview, or create an
-approval draft. Treat only structured sent or a matching skipped receipt as successful delivery.
+a popularity signal, not a quality or security review. Never fetch transcripts, use S3, approve a
+draft, or send any group message. Treat only structured sent or a matching skipped receipt as
+successful personal delivery.
 ```

@@ -514,7 +514,6 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
                 f"补录 {recovered_count}\n"
                 f"官方 {len(official_news)} · "
                 f"YouTube {len(youtube)} · "
-                f"B站 {len(bilibili)} · "
                 f"AIHOT {len(aihot)} · GitHub {len(github_trending)} · "
                 f"安全 {len(security_advisory)} · 模型 {len(model_hub)} · "
                 f"行业精选 {len(industry_digest)} · "

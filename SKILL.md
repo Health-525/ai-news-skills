@@ -1,6 +1,6 @@
 ---
 name: ai-news-skills
-description: Collect first-party AI announcements, API changelogs, reviewed security advisories, allowlisted Hugging Face model metadata, regulatory updates, editorial newsletters, video publisher descriptions, AIHOT, GitHub radar, and curated Builders X posts; cluster signals into update-aware events; rank them by authority, freshness, impact, verification, novelty, and authenticated owner feedback; produce breaking briefs, evidence-bounded Chinese daily cards, and multi-day trends; and deliver validated digests to Feishu. Use for AI 前哨、AI 风向标、全球 AI 新闻、突发预警、安全雷达、模型雷达、监管动态、GitHub 开源雷达、行业周报、RSS 日报、B站/X 动态、频道订阅、趋势复盘、定时飞书群投递及手动审批发布。 Never fetch captions, download media, transcribe videos, or use transcript/S3 handoffs.
+description: Collect first-party AI announcements, API changelogs, reviewed security advisories, allowlisted Hugging Face model metadata, regulatory updates, editorial newsletters, video publisher descriptions, AIHOT, GitHub radar, and curated Builders X posts; cluster signals into update-aware events; rank them by authority, freshness, impact, verification, novelty, and authenticated owner feedback; produce breaking briefs, evidence-bounded Chinese daily cards, and multi-day trends; and deliver validated digests to Feishu. Use for AI 前哨、AI 风向标、全球 AI 新闻、突发预警、安全雷达、模型雷达、监管动态、GitHub 开源雷达、行业周报、RSS 日报、YouTube/X 动态、频道订阅、趋势复盘、定时飞书个人预览及审批后群发布。 Never fetch captions, download media, transcribe videos, or use transcript/S3 handoffs.
 ---
 
 # AI News Skills
@@ -23,10 +23,10 @@ print target identifiers or private runtime values.
    do not promote weak evidence merely for balance or highlight corroborating copies unless they
    contain a material update.
 5. Run `python {baseDir}/scripts/daily_pipeline.py card YYYY-MM-DD`; fix the Markdown until valid.
-6. Run `python {baseDir}/scripts/daily_pipeline.py scheduled-group YYYY-MM-DD`.
-7. Treat structured `sent` or matching `skipped` as successful scheduled delivery. Report counts
+6. Run `python {baseDir}/scripts/daily_pipeline.py preview YYYY-MM-DD`.
+7. Treat structured `sent` or matching `skipped` as successful scheduled personal delivery. Report counts
    for official, security, model Hub, GitHub, editorial, video, and social signals without exposing
-   identifiers. Do not send a personal preview or create an approval draft.
+   identifiers. Stop after the personal preview; never approve or send to a group from the cron run.
 
 Run `doctor --live` only for explicit operational checks or scheduled source audits; it probes
 remote endpoints and may take about one minute. Do not add it to every daily run.
@@ -81,8 +81,7 @@ and post-deployment tests pass.
 ## Hard boundaries
 
 - Never fetch captions, audio, transcripts, or video pages. Channel-home lookup is allowed only
-  while validating a submitted subscription handle. Bilibili collection may read only the
-  configured accounts' public submission-list metadata API.
+  while validating a submitted YouTube subscription handle. Do not collect Bilibili content.
 - Official news may read only configured HTTPS RSS/Atom feeds, dated changelogs, first-party JSON
   endpoints, embedded server-rendered data, or bounded same-domain news indexes and article
   metadata. Never execute page scripts, summarize article bodies, or infer from a headline.
@@ -100,8 +99,8 @@ and post-deployment tests pass.
   safety, benchmark, or adoption evidence. Do not fetch model files or execute model code.
 - Never summarize an unavailable record or infer details from its title.
 - Label summaries `来源摘要`, never `事实摘要` or `字幕摘要`.
-- Scheduled group delivery is allowed only through `scheduled-group` when the external runtime
-  explicitly enables it. Manual group publication still requires fresh owner approval.
+- Scheduled execution must stop after `preview`. Group publication requires fresh approval from
+  the same authenticated owner for the exact frozen draft.
 - Release announcements are allowed only through `release-announcement`, require a manifest that
   matches `.deployment-commit`, and require explicit external enablement. Never accept a target from
   the manifest or command line.

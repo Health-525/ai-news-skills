@@ -1,8 +1,7 @@
 # Digest approval workflow
 
-This workflow applies to manual group publication. The daily scheduled digest uses
-`scheduled-group DATE` only when the external runtime explicitly enables automatic group delivery;
-it does not create or consume an approval draft.
+This workflow applies to every daily group publication. The scheduled digest runs `preview DATE`
+and stops; it never sends directly to a group or consumes an approval draft.
 
 `preview DATE` stores the exact rendered digest cards in SQLite before private delivery. The owner
 receives those cards and a separate approval control card. The control card is not part of the group
@@ -26,5 +25,5 @@ python {baseDir}/scripts/daily_pipeline.py approve --requester-id AUTHENTICATED_
 python {baseDir}/scripts/daily_pipeline.py reject --requester-id AUTHENTICATED_ID --draft-id DRAFT_ID
 ```
 
-The group target never appears as a command argument. Manual preview runs must stop after `preview`;
-the separate scheduled workflow must never call `approve`.
+The group target never appears as a command argument. Scheduled and manual preview runs must stop
+after `preview`; only a later authenticated owner action may call `approve`.

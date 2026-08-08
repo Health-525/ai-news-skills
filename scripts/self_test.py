@@ -14,7 +14,6 @@ from pathlib import Path
 
 from daily_pipeline import _handle_scheduled_group
 from radar.approval import build_approval_card
-from radar.bilibili import fetch_bilibili, load_bilibili_accounts
 from radar.delivery import _parse_bridge_payload, send_group_cards, send_personal_cards
 from radar.digest import FrozenItem, build_card, build_cards, validate_frozen_digest
 from radar.github_radar import (
@@ -65,19 +64,6 @@ def main() -> int:
     status, text, reason = source_text_status("Subscribe now https://example.com")
     assert status == "unavailable" and not text and reason
     assert reason == "来源未提供足够的可用简介"
-
-    bilibili_accounts = load_bilibili_accounts(
-        Path(__file__).resolve().parents[1] / "references" / "bilibili-accounts.json"
-    )
-    assert len(bilibili_accounts) == 6
-    assert {account["name"] for account in bilibili_accounts} == {
-        "秋芝2046",
-        "张咋啦Zara",
-        "张小珺商业访谈录",
-        "小Lin说",
-        "硅谷101",
-        "技术爬爬虾",
-    }
 
     official_sources = load_official_sources(
         Path(__file__).resolve().parents[1] / "references" / "official-news-sources.json"
@@ -522,58 +508,6 @@ def main() -> int:
     assert "1 with relevant in-window items" in youtube_health.detail
     assert "2 without relevant in-window items" in youtube_health.detail
     assert "1 off-topic items filtered" in youtube_health.detail
-    bilibili_nav = {
-        "code": -101,
-        "data": {
-            "wbi_img": {
-                "img_url": f"https://i0.hdslb.com/bfs/wbi/{'a' * 32}.png",
-                "sub_url": f"https://i0.hdslb.com/bfs/wbi/{'b' * 32}.png",
-            }
-        },
-    }
-    bilibili_payload = {
-        "code": 0,
-        "data": {
-            "list": {
-                "vlist": [
-                    {
-                        "bvid": "BV1fullaccount",
-                        "title": "Global macroeconomics without an AI keyword",
-                        "description": "A complete business analysis supplied by the publisher.",
-                        "mid": 520819684,
-                        "created": 1784620800,
-                    },
-                    {
-                        "bvid": "BV1oldaccount0",
-                        "title": "Old upload",
-                        "description": "An old publisher description outside the window.",
-                        "mid": 520819684,
-                        "created": 1784361600,
-                    },
-                ]
-            }
-        },
-    }
-
-    def fake_bilibili_fetcher(
-        url: str, _cache_key: str, _storage: Storage
-    ) -> tuple[bytes, bool]:
-        payload = bilibili_nav if url.endswith("/nav") else bilibili_payload
-        return json.dumps(payload).encode("utf-8"), False
-
-    with tempfile.TemporaryDirectory() as temporary:
-        bilibili_storage = Storage(Path(temporary))
-        bilibili_storage.initialize()
-        bilibili_items, bilibili_health = fetch_bilibili(
-            [{"name": "小Lin说", "user_id": "520819684"}],
-            datetime(2026, 7, 21, 0, 0, tzinfo=timezone.utc),
-            bilibili_storage,
-            fake_bilibili_fetcher,
-        )
-    assert len(bilibili_items) == 1 and bilibili_health.status == "ok"
-    assert bilibili_items[0].source_type == "bilibili"
-    assert bilibili_items[0].title == "Global macroeconomics without an AI keyword"
-    assert "full-account collection" in bilibili_health.detail
     changelog_items = parse_official_changelog(
         b"""<html><body>
           <h2>July 21, 2026</h2>

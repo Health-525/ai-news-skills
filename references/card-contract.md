@@ -6,9 +6,9 @@ or invented records.
 
 The maintained Feishu card displays:
 
-- per-card total, current-window, recovered, official news, YouTube, Bilibili, AIHOT, GitHub radar,
+- per-card total, current-window, recovered, official news, YouTube, AIHOT, GitHub radar,
   security advisory, model Hub, industry digest, Builders X, and model-selected highlight counts;
-- source sections ordered as official news, YouTube, Bilibili, AIHOT, GitHub radar, security
+- source sections ordered as official news, YouTube, AIHOT, GitHub radar, security
   advisories, model Hub, industry digest, then Builders X;
 - source section headers use the Feishu JSON 2.0 `section_heading` token configured to render at
   `heading` size on desktop and mobile, while item bodies retain the normal Markdown size;
@@ -27,6 +27,9 @@ The maintained Feishu card displays:
 The renderer splits oversized payloads instead of truncating records. Delivery hashes the rendered
 cards and target, then writes a private receipt. A retry with the same target and card hash returns
 `skipped`; a mismatched receipt fails closed.
+
+Historical artifacts containing the retired `bilibili` source type remain renderable for audit,
+but new collection runs do not create that source type or display a Bilibili count.
 
 Before rendering schema-version-2 sources, verify the source-text, record, and source-set hashes.
 The private card artifact records source-set, frozen-Markdown, and rendered-card hashes for audit and

@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Iterator
 
 from .digest import build_cards, validate_frozen_digest
-from .bilibili import BILIBILI_NAV_URL, load_bilibili_accounts
 from .github_radar import load_github_radar_config
 from .huggingface_radar import HUGGINGFACE_MODELS_API, load_huggingface_radar_config
 from .intelligence import classify_item, verify_source_payload
@@ -39,7 +38,6 @@ from .trends import build_trend_report
 
 RUNTIME_ENV_KEYS = {
     "AI_NEWS_AUTO_GROUP_DELIVERY",
-    "AI_NEWS_BILIBILI_ACCOUNTS_FILE",
     "AI_NEWS_FEISHU_PERSONAL_TARGET",
     "AI_NEWS_FEISHU_GROUP_TARGET",
     "AI_NEWS_INDUSTRY_DIGEST_SOURCES_FILE",
@@ -105,15 +103,6 @@ def release_announcements_enabled() -> bool:
 def channels_file() -> Path:
     configured = os.environ.get("AI_NEWS_YOUTUBE_CHANNELS_FILE", "").strip()
     return Path(configured).expanduser() if configured else skill_root() / "references" / "youtube-channels.json"
-
-
-def bilibili_accounts_file() -> Path:
-    configured = os.environ.get("AI_NEWS_BILIBILI_ACCOUNTS_FILE", "").strip()
-    return (
-        Path(configured).expanduser()
-        if configured
-        else skill_root() / "references" / "bilibili-accounts.json"
-    )
 
 
 def builders_x_accounts_file() -> Path:
@@ -214,12 +203,6 @@ def doctor(*, live: bool = False) -> dict[str, object]:
     else:
         add("youtube-channels", "ok", f"{len(channels)} valid channels")
     try:
-        bilibili_accounts = load_bilibili_accounts(bilibili_accounts_file())
-    except ValueError as error:
-        add("bilibili-accounts", "error", str(error))
-    else:
-        add("bilibili-accounts", "ok", f"{len(bilibili_accounts)} valid accounts")
-    try:
         builders_x_accounts = load_builders_x_accounts(builders_x_accounts_file())
     except ValueError as error:
         add("builders-x-accounts", "error", str(error))
@@ -311,7 +294,6 @@ def doctor(*, live: bool = False) -> dict[str, object]:
             (
                 ("platform:aihot", AIHOT_API_URL),
                 ("platform:builders-x", BUILDERS_X_FEED_URL),
-                ("platform:bilibili", BILIBILI_NAV_URL),
                 ("platform:github-advisories", f"{GITHUB_ADVISORIES_API}?per_page=1"),
                 ("platform:huggingface", f"{HUGGINGFACE_MODELS_API}?limit=1"),
             )
@@ -421,7 +403,6 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
             storage.initialize()
             storage.seed_subscriptions(load_channels(channels_file()))
             channels = storage.active_channels()
-            bilibili_accounts = load_bilibili_accounts(bilibili_accounts_file())
             official_sources = load_official_sources(official_news_sources_file())
             industry_sources = load_official_sources(industry_digest_sources_file())
             github_config = load_github_radar_config(github_radar_file())
@@ -433,7 +414,6 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
             collection_cutoff = now - timedelta(hours=COLLECTION_LOOKBACK_HOURS)
             items, health = collect_sources(
                 channels,
-                bilibili_accounts,
                 official_sources,
                 industry_sources,
                 builders_x_accounts,
@@ -544,7 +524,6 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
     available = sum(record["source_text_status"] == "available" for record in records)
     official_news = sum(record["source_type"] == "official_news" for record in records)
     youtube = sum(record["source_type"] == "youtube" for record in records)
-    bilibili = sum(record["source_type"] == "bilibili" for record in records)
     aihot = sum(record["source_type"] == "aihot" for record in records)
     github_trending = sum(
         record["source_type"] == "github_trending" for record in records
@@ -564,7 +543,6 @@ def prepare(date_str: str) -> tuple[int, dict[str, object]]:
         "total": len(records),
         "official_news": official_news,
         "youtube": youtube,
-        "bilibili": bilibili,
         "aihot": aihot,
         "github_trending": github_trending,
         "security_advisory": security_advisory,

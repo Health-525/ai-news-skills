@@ -35,8 +35,8 @@
 | SIGNAL / 信号层 | TRUST / 可信层 | DELIVERY / 交付层 |
 | --- | --- | --- |
 | 官方 Newsroom、API Changelog、稳定版 Releases | 每条记录独立证据，不跨来源补全事实 | 飞书原生卡片与超长内容自动拆分 |
-| 国内外行业 RSS、YouTube RSS 描述、B站投稿元数据 | 证据不足显式标记 `不可用` | 重试、哈希回执与幂等 `skipped` |
-| AIHOT、GitHub、GitHub 安全公告、Hugging Face 模型雷达 | 冻结 Markdown 与逐层哈希锁定模型输出边界 | 定时群直发与所有者审批双通道 |
+| 国内外行业 RSS、YouTube RSS 描述 | 证据不足显式标记 `不可用` | 重试、哈希回执与幂等 `skipped` |
+| AIHOT、GitHub、GitHub 安全公告、Hugging Face 模型雷达 | 冻结 Markdown 与逐层哈希锁定模型输出边界 | 定时个人预览与所有者审批群发 |
 | 监管动态、Builders X 与 24 小时滚动窗口 | 官方主张、审查公告、平台元数据和社交动态分层归因 | `08:30 Asia/Shanghai` 隔离会话运行 |
 
 项目不获取字幕、音频或视频正文，不下载媒体，不执行转写，也不使用 S3 进行内容交接。
@@ -50,7 +50,6 @@ flowchart LR
         A["Official News<br/>& Changelog"]
         B["Industry RSS"]
         C["YouTube RSS<br/>Descriptions"]
-        O["Bilibili<br/>Submission Metadata"]
         D["AIHOT"]
         E["GitHub Radar<br/>Official API"]
         P["Security Advisories<br/>Reviewed API"]
@@ -71,18 +70,20 @@ flowchart LR
     subgraph DELIVERY["03 / DELIVERY PLANE"]
         K["Native Card<br/>Renderer"]
         L["Receipt + Retry<br/>Idempotency"]
-        M["Feishu Group"]
+        M["Feishu Personal<br/>Preview"]
+        U["Owner-bound<br/>Approval"]
+        V["Feishu Group"]
     end
 
-    A & B & C & O & D & E & P & Q & N --> F
-    F --> R --> S --> G --> H --> I --> J --> K --> L --> M
+    A & B & C & D & E & P & Q & N --> F
+    F --> R --> S --> G --> H --> I --> J --> K --> L --> M --> U --> V
 
     classDef signal fill:#0f172a,stroke:#38bdf8,color:#f8fafc,stroke-width:2px
     classDef trust fill:#052e2b,stroke:#2dd4bf,color:#f0fdfa,stroke-width:2px
     classDef delivery fill:#431407,stroke:#fb923c,color:#fff7ed,stroke-width:2px
     class A,B,C,D,E,N,P,Q signal
     class F,R,S,G,H,I,J trust
-    class K,L,M delivery
+    class K,L,M,U,V delivery
 ```
 
 采集、去重、质量判断、卡片渲染和投递均由脚本确定性执行。模型只负责两件事：
@@ -165,15 +166,15 @@ python scripts/daily_pipeline.py prepare YYYY-MM-DD
 2. 运行 `prepare DATE`，生成带日期的来源 JSON。
 3. Agent 只读取该来源 JSON，并按 `references/editorial-policy.md` 写入完整冻结 Markdown。
 4. 运行 `card DATE`，验证记录、链接和摘要边界并生成飞书卡片。
-5. 运行 `scheduled-group DATE`，向外部配置的群目标发送卡片。
-6. 仅将结构化 `sent` 或匹配成功回执的 `skipped` 视为投递成功。
+5. 运行 `preview DATE`，仅向个人发送卡片并创建冻结审批草稿。
+6. 定时任务停止；只有认证所有者随后批准同一草稿时才发送到群。
 
 ```bash
 python scripts/daily_pipeline.py doctor
 python scripts/daily_pipeline.py prepare YYYY-MM-DD
 # OpenClaw 在此处写入返回的 digest_file
 python scripts/daily_pipeline.py card YYYY-MM-DD
-python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
+python scripts/daily_pipeline.py preview YYYY-MM-DD
 ```
 
 定时任务的标准 Prompt 和完整停止条件见 [references/schedule.md](references/schedule.md)。
@@ -199,8 +200,8 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `maintenance [--apply]` | 预览或清理过期缓存、草稿与快照 | `--apply` 删除过期私有状态 |
 | `release-announcement --manifest FILE [--dry-run]` | 发布生产版本更新公告 | 非 dry-run 会发送群消息 |
 
-运行 `python scripts/daily_pipeline.py --help` 查看完整参数。人工审批与定时直发是两条独立流程，
-不得在同一次任务中混用。
+运行 `python scripts/daily_pipeline.py --help` 查看完整参数。定时任务只创建个人预览，群投递
+必须由后续的认证所有者审批触发。
 
 ## Source Governance
 
@@ -212,7 +213,6 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `references/security-advisories.json` | GitHub 审查安全公告的 AI 依赖包白名单 |
 | `references/huggingface-radar.json` | Hugging Face 模型发布组织白名单 |
 | `references/youtube-channels.json` | 初始 YouTube 频道种子列表 |
-| `references/bilibili-accounts.json` | 全量采集的 B 站账号白名单 |
 | `references/builders-x-accounts.json` | Builders X 本地账户白名单 |
 
 添加来源时遵循以下准入标准：
@@ -256,8 +256,7 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `AI_NEWS_MIN_OFFICIAL_SOURCE_RATIO` | 官方来源发布门禁，默认 `0.65` |
 | `AI_NEWS_REQUIRED_OFFICIAL_SOURCES` | 必须健康的官方来源名称列表 |
 | `AI_NEWS_YOUTUBE_CHANNELS_FILE` | YouTube 频道配置覆盖文件 |
-| `AI_NEWS_BILIBILI_ACCOUNTS_FILE` | B 站账号配置覆盖文件 |
-| `AI_NEWS_AUTO_GROUP_DELIVERY` | 显式启用定时群直发 |
+| `AI_NEWS_AUTO_GROUP_DELIVERY` | 兼容旧命令的群直发开关；生产环境保持关闭 |
 | `AI_NEWS_RELEASE_ANNOUNCEMENTS` | 显式启用生产版本更新公告 |
 | `AI_NEWS_OWNER_ID` | 订阅与审批操作的认证所有者 |
 | `AI_NEWS_FEISHU_PERSONAL_TARGET` | 私聊预览目标 |

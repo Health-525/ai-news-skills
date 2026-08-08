@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Callable
 from xml.etree import ElementTree as ET
 
-from .bilibili import fetch_bilibili
 from .models import ContentItem, SourceHealth
 from .official_news import OfficialSource, fetch_official_news
 from .github_radar import GitHubRadarConfig, fetch_github_trending
@@ -585,7 +584,6 @@ def _deduplicate_items(items: list[ContentItem]) -> list[ContentItem]:
 
 def collect_sources(
     channels: list[dict[str, str]],
-    bilibili_accounts: list[dict[str, str]],
     official_sources: list[OfficialSource],
     industry_digest_sources: list[OfficialSource],
     builders_x_accounts: list[dict[str, str]],
@@ -609,7 +607,6 @@ def collect_sources(
             official_sources, cutoff, storage, _fetch_bytes
         ),
         "youtube": lambda: fetch_youtube(channels, cutoff, storage),
-        "bilibili": lambda: fetch_bilibili(bilibili_accounts, cutoff, storage),
         "aihot": lambda: fetch_aihot(cutoff, storage),
         "github_trending": lambda: fetch_github_trending(github_radar_config, storage),
         "security_advisory": lambda: fetch_security_advisories(
@@ -648,7 +645,6 @@ def collect_sources(
 
     official_items, official_health = collected["official_news"]
     youtube_items, youtube_health = collected["youtube"]
-    bilibili_items, bilibili_health = collected["bilibili"]
     aihot_items, aihot_health = collected["aihot"]
     github_items, github_health = collected["github_trending"]
     security_items, security_health = collected["security_advisory"]
@@ -659,7 +655,6 @@ def collect_sources(
         [
             *official_items,
             *youtube_items,
-            *bilibili_items,
             *aihot_items,
             *github_items,
             *security_items,
@@ -671,7 +666,6 @@ def collect_sources(
     return items, [
         official_health,
         youtube_health,
-        bilibili_health,
         aihot_health,
         github_health,
         security_health,

@@ -48,14 +48,6 @@
   window. A conservative title-plus-description topic gate removes clearly unrelated uploads while
   retaining AI models, agents, inference, coding tools, autonomous systems, robotics, and AI
   infrastructure. The health detail reports how many in-window uploads were filtered off-topic.
-- Bilibili: public submission-list metadata for every account in `bilibili-accounts.json`. The
-  configured accounts are collected in full without an AI topic gate. Evidence is limited to the
-  publisher-supplied submission description; the collector never opens video pages, reads captions,
-  downloads media, or transcribes content. Empty or materially short descriptions remain
-  unavailable. Requests use Bilibili's public WBI signature, run serially with bounded retries, and
-  retain only successful responses in the 72-hour HTTP fallback cache. Account-list failures are
-  isolated per account and reported in `source_health`; a rejected response never masquerades as a
-  quiet account or overwrites a previously successful cache entry.
 - AIHOT: the official public selected-items API; evidence comes from its supplied summary.
 - GitHub open-source radar: official GitHub repository Search API metadata selected by the topics in
   `github-radar.json`. It excludes forks, archived repositories, missing descriptions, and projects
@@ -106,7 +98,7 @@ universal fact.
 The collector handles gzip responses, uses conditional requests when validators are available, and
 can use a recent private cache during transient outages. Every fallback is visible in
 `source_health`; stale official RSS,
-  industry digest, YouTube, Bilibili, and AIHOT records outside the report window are excluded, and stale X snapshots fail
+  industry digest, YouTube, and AIHOT records outside the report window are excluded, and stale X snapshots fail
 closed. Canonical URLs are deduplicated across sources and across digest dates, with direct official
 records preferred over matching aggregator records discovered in the same run. Same-host official
 or editorial records with the same normalized title and publication date are also treated as one
@@ -175,7 +167,6 @@ dated source JSON, frozen Markdown, rendered cards, locks, and private receipts.
 Optional environment variables:
 
 - `AI_NEWS_YOUTUBE_CHANNELS_FILE`: external channel-list override.
-- `AI_NEWS_BILIBILI_ACCOUNTS_FILE`: external Bilibili account-list override.
 - `AI_NEWS_OFFICIAL_SOURCES_FILE`: external official-source-list override.
 - `AI_NEWS_INDUSTRY_DIGEST_SOURCES_FILE`: external editorial-feed-list override.
 - `AI_NEWS_GITHUB_RADAR_FILE`: external GitHub topic and threshold configuration override.
