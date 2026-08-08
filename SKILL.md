@@ -17,8 +17,10 @@ print target identifiers or private runtime values.
 4. Read only the returned `source_file`. Follow
    [references/editorial-policy.md](references/editorial-policy.md) and
    [references/newsroom-intelligence.md](references/newsroom-intelligence.md), then write every
-   record to the returned `digest_file` in `rank_position` order. Prefer
-   `recommended_highlight=true` story leaders; do not highlight corroborating copies unless they
+   record to the returned `digest_file` in `rank_position` order. Evaluate highlights within every
+   populated source section so a globally dominant source cannot suppress a distinct, useful item
+   from another section. Use `recommended_highlight=true` as a strong signal rather than a quota;
+   do not promote weak evidence merely for balance or highlight corroborating copies unless they
    contain a material update.
 5. Run `python {baseDir}/scripts/daily_pipeline.py card YYYY-MM-DD`; fix the Markdown until valid.
 6. Run `python {baseDir}/scripts/daily_pipeline.py scheduled-group YYYY-MM-DD`.

@@ -59,6 +59,12 @@ that is absent from the already selected leaders. Stop selecting when the next r
 decision-relevant information. Routine case studies, generic reports, minor releases, and recovered
 items remain folded even when their source authority is high.
 
+Evaluate each populated source section independently. A burst of highly ranked official or
+security records must not prevent a distinct company-relevant YouTube, Bilibili, AIHOT, GitHub,
+industry, model Hub, or Builders X record from being highlighted. This is a marginal-value check,
+not a requirement to fill every section; weak, unavailable, duplicative, or speculative evidence
+remains folded.
+
 Prioritize a reviewed high/critical advisory when it affects a widely used allowlisted dependency
 and provides a concrete remediation. Promote a new model-Hub record only when its metadata provides
 a distinct strategic signal; a repository appearing on an allowlist is not sufficient by itself.

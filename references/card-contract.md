@@ -10,12 +10,11 @@ The maintained Feishu card displays:
   security advisory, model Hub, industry digest, Builders X, and model-selected highlight counts;
 - source sections ordered as official news, YouTube, Bilibili, AIHOT, GitHub radar, security
   advisories, model Hub, industry digest, then Builders X;
-- source section headers use the Feishu JSON 2.0 `heading` text size while item bodies retain the
-  normal Markdown size;
-- a compact `今日必看` overview appears only on the first card and lists up to five ranked primary
-  event leaders; subsequent cards are labeled as classification appendices;
-- records are packed into cards by global editorial score before they are grouped into the
-  familiar source sections;
+- source section headers use the Feishu JSON 2.0 `section_heading` token configured to render at
+  `heading` size on desktop and mobile, while item bodies retain the normal Markdown size;
+- cards use the same uncluttered title without global-overview or classification-appendix labels;
+- records are packed by stable source order, preserving each source section instead of allowing a
+  global editorial score to move a later section ahead of an earlier one;
 - model-selected highlights expanded first inside each source section;
 - remaining current-window records collapsed immediately after their source highlights, while
   recovered records use a separate folded catch-up panel;

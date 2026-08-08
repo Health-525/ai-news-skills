@@ -9,9 +9,10 @@ needed only for evidence-bounded Chinese summaries and highlight selection.
 2. Run `prepare DATE`; stop on `failed` and report sanitized source health.
 3. Read only the dated source JSON. Do not browse or use prior knowledge.
 4. Write every record to frozen Markdown in `rank_position` order. Keep unavailable records exact
-   and choose highlights without a fixed count or source quota. Start from
-   `recommended_highlight`, keep one primary leader per event, and apply the company relevance and
-   marginal-value diversity rules in `editorial-policy.md`. Corroborating records normally remain
+   and choose highlights without a fixed count or source quota. Evaluate every populated source
+   section independently, start from `recommended_highlight`, keep one primary leader per event,
+   and apply the company relevance and marginal-value diversity rules in `editorial-policy.md`.
+   Do not select weak evidence merely to fill a section. Corroborating records normally remain
    folded unless they add distinct decision-relevant information. Label `recovered` records as
    catch-up coverage and do not present them as current-window updates.
 5. Run `card DATE` and correct validation failures.
@@ -33,8 +34,10 @@ their latency or generated artifacts to the isolated daily delivery transaction.
 ```text
 Use $ai-news-skills. Run the complete source-only daily workflow for today's Asia/Shanghai date.
 Stop on doctor errors. Summarize only available source_text, keep unavailable records exact,
-choose company-relevant highlights using marginal-value source diversity without a fixed quota,
-preserve rank_position order and normally select only the recommended primary event leader,
+choose company-relevant highlights independently within every populated source section using
+marginal-value diversity without a fixed quota, preserve rank_position order, use recommended
+primary event leaders as a strong starting point without letting one source suppress all other
+sections, and never promote weak evidence merely for balance,
 label recovered overlap records as catch-up coverage rather than current-window news,
 validate the native cards, and call scheduled-group for the configured group. Treat domestic and
 international official releases, stable GitHub releases, and API changelogs as

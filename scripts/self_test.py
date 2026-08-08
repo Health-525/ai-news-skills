@@ -1315,14 +1315,19 @@ def main() -> int:
     ]
     section_card = build_card("2026-07-20", section_items)
     section_elements = section_card["body"]["elements"]
-    assert section_card["config"] == {"update_multi": True}
+    assert section_card["config"]["update_multi"] is True
+    assert section_card["config"]["style"]["text_size"]["section_heading"] == {
+        "default": "heading",
+        "pc": "heading",
+        "mobile": "heading",
+    }
     source_headers = [
         element
         for element in section_elements
         if element.get("tag") == "markdown" and "text_size" in element
     ]
     assert len(source_headers) == 7
-    assert all(element.get("text_size") == "heading" for element in source_headers)
+    assert all(element.get("text_size") == "section_heading" for element in source_headers)
     section_text = json.dumps(section_card, ensure_ascii=False)
     assert "编辑评分" not in section_text
     assert "原文语言" not in section_text
@@ -1372,7 +1377,15 @@ def main() -> int:
             summary=long_summary,
             recommendation="",
             highlight=True,
-            rank_score=90,
+            rank_score={
+                "official_news": 10,
+                "youtube": 20,
+                "bilibili": 30,
+                "aihot": 40,
+                "github_trending": 50,
+                "industry_digest": 60,
+                "builders_x": 99,
+            }[source_type],
         )
         for source_type, source, url in (
             ("official_news", "官方发布 · Example", "https://example.com/news/split"),
@@ -1399,9 +1412,8 @@ def main() -> int:
     split_cards = build_cards("2026-07-20", split_items)
     assert len(split_cards) == 7
     split_text = [json.dumps(card, ensure_ascii=False) for card in split_cards]
-    assert sum("今日必看" in text for text in split_text) == 1
-    assert split_cards[0]["header"]["subtitle"]["content"] == "今日重点"
-    assert split_cards[1]["header"]["subtitle"]["content"] == "分类附录 2"
+    assert all("今日必看" not in text for text in split_text)
+    assert all("subtitle" not in card["header"] for card in split_cards)
     assert "📡 官方发布" in split_text[0]
     assert "🎬 YouTube" in split_text[1]
     assert "📺 哔哩哔哩" in split_text[2]

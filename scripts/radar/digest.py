@@ -398,30 +398,6 @@ def _item_markdown(item: FrozenItem, index: int | None = None) -> str:
     return "\n".join(lines)
 
 
-def _priority_overview(items: list[FrozenItem]) -> list[dict]:
-    leaders = sorted(
-        (
-            item
-            for item in items
-            if (
-                item.highlight
-                and item.recency_status == "current"
-                and item.rank_score > 0
-                and item.story_role == "primary"
-            )
-        ),
-        key=lambda item: (-item.rank_score, item.title.casefold()),
-    )[:5]
-    if not leaders:
-        return []
-    lines = ["**🏆 今日必看**"]
-    lines.extend(
-        f"{index}. [{_safe_title(item)}]({item.url}) · {_source_label(item)}"
-        for index, item in enumerate(leaders, start=1)
-    )
-    return [{"tag": "markdown", "content": "\n".join(lines)}]
-
-
 def _collapsible(title: str, items: list[FrozenItem], element_id: str) -> dict:
     return {
         "tag": "collapsible_panel",
@@ -465,7 +441,7 @@ def _source_section(
     elements: list[dict] = [
         {
             "tag": "markdown",
-            "text_size": "heading",
+            "text_size": "section_heading",
             "content": (
                 f"**{icon} {label}**\n"
                 f"<font color='grey'>AI 判断 {len(highlights)} 条重点 · "
@@ -496,13 +472,7 @@ def _source_section(
     return elements
 
 
-def build_card(
-    date_str: str,
-    items: list[FrozenItem],
-    *,
-    show_overview: bool = True,
-    card_index: int = 1,
-) -> dict:
+def build_card(date_str: str, items: list[FrozenItem]) -> dict:
     try:
         parsed_date = datetime.strptime(date_str, "%Y-%m-%d")
     except ValueError as error:
@@ -553,8 +523,6 @@ def build_card(
             ),
         }
     ]
-    if show_overview:
-        elements.extend(_priority_overview(items))
     elements.extend(
         _source_section(
             "官方发布",
@@ -645,13 +613,20 @@ def build_card(
     display_date = f"{parsed_date.year}年{parsed_date.month}月{parsed_date.day}日"
     return {
         "schema": "2.0",
-        "config": {"update_multi": True},
+        "config": {
+            "update_multi": True,
+            "style": {
+                "text_size": {
+                    "section_heading": {
+                        "default": "heading",
+                        "pc": "heading",
+                        "mobile": "heading",
+                    }
+                }
+            },
+        },
         "header": {
             "template": "orange",
-            "subtitle": {
-                "tag": "plain_text",
-                "content": "今日重点" if show_overview else f"分类附录 {card_index}",
-            },
             "title": {"tag": "plain_text", "content": f"📗 AI 前哨｜{display_date}"},
         },
         "body": {
@@ -668,40 +643,22 @@ def build_cards(date_str: str, items: list[FrozenItem]) -> list[dict]:
         raise ValueError("cannot build a card without items")
     ordered_items = sorted(
         enumerate(items),
-        key=lambda pair: (
-            -pair[1].rank_score if pair[1].rank_score else 0,
-            SOURCE_ORDER.get(pair[1].source_type, len(SOURCE_ORDER)),
-            pair[0],
-        ),
+        key=lambda pair: (SOURCE_ORDER.get(pair[1].source_type, len(SOURCE_ORDER)), pair[0]),
     )
-    card_items: list[list[FrozenItem]] = []
+    cards: list[dict] = []
     current: list[FrozenItem] = []
     for _, item in ordered_items:
         candidate = [*current, item]
-        candidate_card = build_card(
-            date_str,
-            candidate,
-            show_overview=not card_items,
-            card_index=len(card_items) + 1,
-        )
+        candidate_card = build_card(date_str, candidate)
         size = len(json.dumps(candidate_card, ensure_ascii=False).encode("utf-8"))
         if current and size > MAX_CARD_BYTES:
-            card_items.append(current)
+            cards.append(build_card(date_str, current))
             current = [item]
         else:
             current = candidate
     if current:
-        card_items.append(current)
-    cards = [
-        build_card(
-            date_str,
-            group,
-            show_overview=index == 1,
-            card_index=index,
-        )
-        for index, group in enumerate(card_items, start=1)
-    ]
-    for card in cards:
+        card = build_card(date_str, current)
         if len(json.dumps(card, ensure_ascii=False).encode("utf-8")) > MAX_CARD_BYTES:
             raise ValueError("one digest item exceeds the Feishu card size limit")
+        cards.append(card)
     return cards
