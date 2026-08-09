@@ -234,24 +234,14 @@ def _source_text(
     observed_at: datetime,
 ) -> tuple[str, int, float]:
     created_at = candidate["created_at"]
-    pushed_at = candidate["pushed_at"]
-    assert isinstance(created_at, datetime) and isinstance(pushed_at, datetime)
+    assert isinstance(created_at, datetime)
     stars = int(candidate["stars"])
     age_days = max((observed_at - created_at).total_seconds() / 86_400, 0.25)
     gain = 0
-    trend_detail = "首次进入本地观察基线"
     if previous:
         gain = max(0, stars - int(previous["stars"]))
-        previous_at = _parse_datetime(previous["captured_at"])
-        elapsed_hours = max((observed_at - previous_at).total_seconds() / 3_600, 0.1)
-        trend_detail = f"距离上次快照 {elapsed_hours:.1f} 小时新增 {gain} Star"
-    topics = "、".join(str(topic) for topic in candidate["topics"]) or "未标注"
-    text = (
-        f"GitHub 官方 API 显示，{candidate['full_name']} 当前有 {stars} Star、"
-        f"{candidate['forks']} Fork；{trend_detail}。仓库创建于 {created_at.date().isoformat()}，"
-        f"最近一次代码推送为 {pushed_at.date().isoformat()}。主要语言：{candidate['language']}；"
-        f"许可证：{candidate['license']}；主题：{topics}。仓库自述：{candidate['description']}"
-    )
+    description = " ".join(str(candidate["description"]).split())
+    text = f"The repository owner describes {candidate['full_name']} as follows: {description}"
     return text, gain, stars / age_days
 
 

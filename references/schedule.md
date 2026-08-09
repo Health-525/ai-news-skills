@@ -45,7 +45,9 @@ validate the native cards, and call scheduled-group for the configured group. Tr
 international official releases, stable GitHub releases, and API changelogs as
 attributed vendor claims, not independent verification. Treat industry digests as attributed
 editorial synthesis. Treat GitHub radar descriptions as repository-owner claims and Star growth as
-a popularity signal, not a quality or security review. Never fetch transcripts, use S3, create a
+a private popularity signal, not a quality or security review. For GitHub radar summaries, directly
+explain what the project is, what problem it addresses, and its primary use; omit Stars, Forks,
+growth, repository dates, language, license, and topics. Never fetch transcripts, use S3, create a
 preview draft, request approval, or send a release announcement. Treat only structured sent or a
 matching skipped receipt as successful group delivery.
 ```

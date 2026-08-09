@@ -23,6 +23,8 @@ print target identifiers or private runtime values.
    at least one highlight; zero is allowed only when the section has no available current record.
    This minimum is not a maximum or fixed mix. Use `recommended_highlight=true` as a strong signal;
    do not highlight unavailable records or corroborating copies unless they contain a material update.
+   For GitHub radar, introduce what the project is and what it is for; omit popularity telemetry and
+   repository dates from the reader summary.
 5. Run `python {baseDir}/scripts/daily_pipeline.py card YYYY-MM-DD`; fix the Markdown until valid.
 6. Run `python {baseDir}/scripts/daily_pipeline.py scheduled-group YYYY-MM-DD`.
 7. Treat structured `sent` or matching `skipped` as successful scheduled group delivery. Report counts

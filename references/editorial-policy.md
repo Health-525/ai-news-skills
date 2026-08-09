@@ -32,9 +32,12 @@ downloads, or likes into claims about quality, safety, benchmark leadership, ado
   vendor, including claims taken from an official changelog.
 - Attribute industry-digest claims to the newsletter and preserve its uncertainty; never rewrite
   them as independently verified facts or claims from the companies being discussed.
-- Attribute GitHub descriptions to the repository and popularity figures to the observed API
-  snapshot. Never infer production readiness, safety, maintainership, or enterprise adoption from
-  Star count, topics, organization name, or repository description.
+- For `source_type=github_trending`, explain the project directly in one or two compact sentences:
+  what it is, the problem it aims to solve, and its primary use when the repository description
+  supports those points. Attribute capabilities to the repository owner. Do not include Stars,
+  Forks, growth, creation or push dates, language, license, or topics in the reader summary; those
+  fields are private discovery and ranking signals, not the project introduction. Never infer
+  production readiness, safety, maintainership, or enterprise adoption from repository metadata.
 - Attribute reviewed advisory details to the GitHub Advisory Database. State that operators must
   compare the affected range with their deployed version; never claim that the company is affected.
 - Attribute model Hub details to the named uploader and Hugging Face metadata snapshot. Do not infer

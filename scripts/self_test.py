@@ -1075,8 +1075,17 @@ def main() -> int:
         )
         assert len(github_items) == 1 and github_health.status == "ok"
         assert github_items[0].source_type == "github_trending"
-        assert "首次进入本地观察基线" in github_items[0].raw_source_text
+        assert "production-oriented runtime" in github_items[0].raw_source_text
+        assert "Star" not in github_items[0].raw_source_text
+        assert "Fork" not in github_items[0].raw_source_text
+        assert "2026-" not in github_items[0].raw_source_text
         assert github_items[0].dedup_identity.endswith("#trend-date=2026-08-05")
+        stored_snapshot = github_storage.previous_github_snapshot(
+            "example/agent-runtime", "2026-08-06"
+        )
+        assert stored_snapshot is not None
+        assert stored_snapshot["stars"] == 1000
+        assert stored_snapshot["forks"] == 120
     with tempfile.TemporaryDirectory() as temporary:
         github_storage = Storage(Path(temporary))
         github_storage.initialize()
@@ -1092,7 +1101,8 @@ def main() -> int:
             test_github_config, github_storage, github_now, github_fetcher
         )
         assert len(github_items) == 1
-        assert "24.0 小时新增 150 Star" in github_items[0].raw_source_text
+        assert "production-oriented runtime" in github_items[0].raw_source_text
+        assert "150 Star" not in github_items[0].raw_source_text
     with tempfile.TemporaryDirectory() as temporary:
         github_storage = Storage(Path(temporary))
         github_storage.initialize()

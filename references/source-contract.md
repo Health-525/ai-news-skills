@@ -53,12 +53,14 @@
   `github-radar.json`. It excludes forks, archived repositories, missing descriptions, and projects
   outside the bounded creation window. On the first run, only recently created repositories meeting
   both absolute-Star and Star-per-day thresholds are emitted. Later runs compare private SQLite
-  snapshots and emit only repositories meeting the configured Star-gain threshold. Total Stars,
-  Forks, creation date, latest push date, language, license, topics, and repository description are
-  attributed to the GitHub API snapshot; popularity is not treated as an endorsement or a security
-  review. The collector does not fetch README files, source code, issues, or arbitrary repository
-  links. Search requests run serially, stop after rate-limit exhaustion, reuse a short-lived local
-  cache for same-run retries, and expose stale fallback or query failures in `source_health`.
+  snapshots and emit only repositories meeting the configured Star-gain threshold. Stars, Forks,
+  creation date, and latest push date remain private discovery and ranking data. The summarization
+  evidence contains only the repository owner's API description, so the reader card introduces what
+  the project is instead of listing popularity telemetry. Popularity is not treated as an endorsement
+  or a security review. The collector does not fetch README files, source code, issues, or arbitrary
+  repository links. Search requests run serially, stop after rate-limit exhaustion, reuse a
+  short-lived local cache for same-run retries, and expose stale fallback or query failures in
+  `source_health`.
 - Security radar: GitHub-reviewed global advisories returned by the official GitHub Advisory API,
   restricted to the package and ecosystem allowlist in `security-advisories.json`. Evidence includes
   the reviewed description, affected range, patched version, CVE/GHSA identifiers, severity, and
