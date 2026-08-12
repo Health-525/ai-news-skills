@@ -164,16 +164,14 @@ def main() -> int:
         first_request = transcript_storage.reserve_transcript_request(
             "member-1", "2026-08-12", video_id, is_owner=False
         )
-        try:
-            transcript_storage.reserve_transcript_request(
-                "member-1", "2026-08-12", video_id, is_owner=False
-            )
-        except ValueError as error:
-            assert "quota" in str(error)
-        else:
-            raise AssertionError("pending request did not reserve the daily quota")
+        concurrent_request = transcript_storage.reserve_transcript_request(
+            "member-1", "2026-08-12", video_id, is_owner=False
+        )
         transcript_storage.finish_transcript_request(
             first_request, consumed=False, outcome="upstream_failed"
+        )
+        transcript_storage.finish_transcript_request(
+            concurrent_request, consumed=True, outcome="available"
         )
         retry_request = transcript_storage.reserve_transcript_request(
             "member-1", "2026-08-12", video_id, is_owner=False
@@ -181,14 +179,12 @@ def main() -> int:
         transcript_storage.finish_transcript_request(
             retry_request, consumed=True, outcome="available"
         )
-        try:
-            transcript_storage.reserve_transcript_request(
-                "member-1", "2026-08-12", video_id, is_owner=False
-            )
-        except ValueError as error:
-            assert "quota" in str(error)
-        else:
-            raise AssertionError("consumed request did not enforce the daily quota")
+        additional_request = transcript_storage.reserve_transcript_request(
+            "member-1", "2026-08-12", video_id, is_owner=False
+        )
+        transcript_storage.finish_transcript_request(
+            additional_request, consumed=True, outcome="available"
+        )
         owner_requests = {
             transcript_storage.reserve_transcript_request(
                 "owner", "2026-08-12", video_id, is_owner=True
@@ -931,8 +927,10 @@ def main() -> int:
     items = validate_frozen_digest(source, markdown)
     cards = build_cards("2026-07-20", items)
     assert len(items) == 2 and len(cards) == 2
-    current_intro = cards[0]["body"]["elements"][0]["content"]
+    report_link = cards[0]["body"]["elements"][0]["content"]
+    current_intro = cards[0]["body"]["elements"][1]["content"]
     recovered_intro = cards[1]["body"]["elements"][0]["content"]
+    assert "查看完整 AI 新闻" in report_link and "example.com/app/" in report_link
     assert "今日最新 1 条信号" in current_intro and "当期 1 · 补录 0" in current_intro
     assert "补录 1 条信号" in recovered_intro and "当期 0 · 补录 1" in recovered_intro
 

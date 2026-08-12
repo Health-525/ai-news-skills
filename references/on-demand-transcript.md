@@ -10,11 +10,10 @@ from an authenticated member of the configured Feishu group for one public YouTu
    and rejects channels, playlists, arbitrary hosts, credentials, fragments, and malformed URLs.
 3. Call Supadata's universal transcript endpoint with `text=true` and `mode=native`. Never use `auto`,
    `generate`, translation, media download, or another transcript provider.
-4. Ordinary members may consume one request per `Asia/Shanghai` date. A pending or consumed request
-   blocks another request that day. Reservations abandoned for ten minutes are released. The configured
-   owner bypasses the quota but still creates a private audit row.
-5. A successful transcript, an unavailable-caption response, or an empty billed transcript consumes the
-   ordinary member's daily request. Authentication, rate-limit, network, and service failures release it.
+4. Authenticated group members may make unlimited explicit requests. Pending, completed, and failed
+   requests never block another request. Reservations abandoned for ten minutes are marked failed.
+5. Create a private audit row for every attempt, including successful, unavailable, and upstream-failed
+   requests. The owner marker is retained only for auditing and does not change access or limits.
 6. Store transcript text only under the private external state directory with restrictive permissions.
    Return only its path and bounded metadata to the agent; never print the API key or requester identity.
 7. Use the transcript only to answer the current request. Prefer a concise Chinese summary or direct

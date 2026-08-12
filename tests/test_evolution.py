@@ -47,6 +47,34 @@ class EvolutionTests(unittest.TestCase):
         with self.storage._connect() as connection:
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], SCHEMA_VERSION)
 
+    def test_schema_v4_removes_transcript_daily_quota(self) -> None:
+        with self.storage._connect() as connection:
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX idx_transcript_daily_quota
+                ON transcript_requests (requester_hash, request_date)
+                WHERE is_owner = 0 AND status IN ('pending', 'consumed')
+                """
+            )
+            connection.execute("PRAGMA user_version = 3")
+
+        self.storage.initialize()
+
+        with self.storage._connect() as connection:
+            indexes = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            ).fetchall()
+            self.assertNotIn("idx_transcript_daily_quota", {row[0] for row in indexes})
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
+
+        first = self.storage.reserve_transcript_request(
+            "member", "2026-08-12", "video", is_owner=False
+        )
+        second = self.storage.reserve_transcript_request(
+            "member", "2026-08-12", "video", is_owner=False
+        )
+        self.assertNotEqual(first, second)
+
     def test_report_timezone_falls_back_to_utc_plus_eight(self) -> None:
         with mock.patch(
             "radar.timezones.ZoneInfo",
@@ -313,10 +341,13 @@ class EvolutionTests(unittest.TestCase):
         self.assertIn("📗 AI 前哨｜", current_text)
         self.assertIn("Current highlight full summary.", current_text)
         self.assertIn("Current folded item", current_text)
-        self.assertNotIn("Current folded summary", current_text)
+        self.assertIn("Current folded summary", current_text)
         self.assertIn("📙 AI 前哨补录｜", recovered_text)
         self.assertIn("Recovered folded item", recovered_text)
-        self.assertNotIn("Recovered summary", recovered_text)
+        self.assertIn("Recovered summary", recovered_text)
+        self.assertIn("https://example.com/app/app_demo", current_text)
+        self.assertNotIn("https://example.com/app/app_demo", recovered_text)
+        self.assertIn("查看完整 AI 新闻", cards[0]["body"]["elements"][0]["content"])
         self.assertLess(len(json.dumps(cards[0], ensure_ascii=False).encode("utf-8")), 25_000)
         self.assertLess(len(json.dumps(cards[1], ensure_ascii=False).encode("utf-8")), 25_000)
 

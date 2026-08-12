@@ -21,8 +21,8 @@ needed only for evidence-bounded Chinese summaries and highlight selection.
    configured group when automatic group delivery is explicitly enabled.
 7. Stop. Never call `preview`, `approve`, or `release-announcement` from the cron run.
 
-Never call `youtube-transcript` from this schedule. On-demand transcript quota and Supadata access are
-reserved for explicit authenticated group messages and are not a fallback source for the daily digest.
+Never call `youtube-transcript` from this schedule. On-demand Supadata access is reserved for explicit
+authenticated group messages and is not a fallback source for the daily digest.
 
 Success requires structured `sent` or a matching `skipped` receipt. Report total, official news,
 security advisories, model Hub, YouTube, AIHOT, GitHub radar, industry digest, Builders X, available,

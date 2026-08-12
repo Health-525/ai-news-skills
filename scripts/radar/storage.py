@@ -14,7 +14,7 @@ from typing import Literal
 
 from .models import ContentItem
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class _ClosingConnection(sqlite3.Connection):
@@ -153,9 +153,7 @@ class Storage:
                     completed_at TEXT,
                     last_error TEXT NOT NULL DEFAULT ''
                 );
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_transcript_daily_quota
-                ON transcript_requests (requester_hash, request_date)
-                WHERE is_owner = 0 AND status IN ('pending', 'consumed');
+                DROP INDEX IF EXISTS idx_transcript_daily_quota;
                 CREATE INDEX IF NOT EXISTS idx_transcript_requests_requested
                 ON transcript_requests (requested_at, status);
                 """
@@ -371,18 +369,6 @@ class Storage:
                 """,
                 (now.isoformat(), stale_before),
             )
-            if not is_owner:
-                existing = connection.execute(
-                    """
-                    SELECT 1 FROM transcript_requests
-                    WHERE requester_hash = ? AND request_date = ?
-                      AND status IN ('pending', 'consumed')
-                    LIMIT 1
-                    """,
-                    (requester_hash, request_date),
-                ).fetchone()
-                if existing:
-                    raise ValueError("daily transcript quota already used")
             connection.execute(
                 """
                 INSERT INTO transcript_requests (

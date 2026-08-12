@@ -101,7 +101,7 @@ def _parser() -> argparse.ArgumentParser:
 
     transcript_parser = subparsers.add_parser(
         "youtube-transcript",
-        help="Fetch one native YouTube transcript under the requester daily quota",
+        help="Fetch one native YouTube transcript for an authenticated group member",
     )
     transcript_parser.add_argument("--requester-id", required=True)
     transcript_parser.add_argument("--url", required=True)
@@ -218,7 +218,7 @@ def _handle_platform_publish(date_str: str, dry_run: bool = False) -> int:
 def _handle_youtube_transcript(args: argparse.Namespace) -> int:
     api_key = _target("AI_NEWS_SUPADATA_API_KEY")
     owner_id = _target("AI_NEWS_OWNER_ID")
-    if not api_key or not owner_id:
+    if not api_key:
         _print({"status": "failed", "error": "on-demand transcript service is not configured"})
         return 1
     try:
@@ -228,7 +228,9 @@ def _handle_youtube_transcript(args: argparse.Namespace) -> int:
         return 1
 
     request_date = datetime.now(REPORT_TIMEZONE).strftime("%Y-%m-%d")
-    is_owner = hmac.compare_digest(args.requester_id.strip(), owner_id)
+    is_owner = bool(
+        owner_id and hmac.compare_digest(args.requester_id.strip(), owner_id)
+    )
     storage = _storage()
     try:
         request_id = storage.reserve_transcript_request(
@@ -238,16 +240,11 @@ def _handle_youtube_transcript(args: argparse.Namespace) -> int:
             is_owner=is_owner,
         )
     except ValueError as error:
-        status = "quota_exhausted" if "quota" in str(error) else "failed"
         _print(
             {
-                "status": status,
-                "error": (
-                    "普通成员每天仅可使用一次 YouTube 字幕服务，请明天再试。"
-                    if status == "quota_exhausted"
-                    else str(error)
-                ),
-                "quota": "unlimited" if is_owner else "0_remaining",
+                "status": "failed",
+                "error": str(error),
+                "quota": "unlimited",
             }
         )
         return 1
@@ -268,9 +265,7 @@ def _handle_youtube_transcript(args: argparse.Namespace) -> int:
             {
                 "status": "unavailable" if error.consumes_quota else "failed",
                 "error": str(error),
-                "quota": "unlimited" if is_owner else (
-                    "0_remaining" if error.consumes_quota else "1_remaining"
-                ),
+                "quota": "unlimited",
             }
         )
         return 1
@@ -285,7 +280,7 @@ def _handle_youtube_transcript(args: argparse.Namespace) -> int:
             {
                 "status": "failed",
                 "error": "字幕已获取，但私有文件保存失败。",
-                "quota": "unlimited" if is_owner else "0_remaining",
+                "quota": "unlimited",
             }
         )
         return 1
@@ -300,7 +295,7 @@ def _handle_youtube_transcript(args: argparse.Namespace) -> int:
             "language": result["language"],
             "characters": len(str(result["content"])),
             "transcript_file": str(transcript_file),
-            "quota": "unlimited" if is_owner else "0_remaining",
+            "quota": "unlimited",
         }
     )
     return 0

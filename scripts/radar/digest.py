@@ -9,6 +9,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 MAX_CARD_BYTES = 25_000
+DAILY_REPORT_URL = "https://example.com/app/app_demo"
 SOURCE_ORDER = {
     "official_news": 0,
     "youtube": 1,
@@ -509,7 +510,12 @@ def _source_section(
     return elements
 
 
-def build_card(date_str: str, items: list[FrozenItem]) -> dict:
+def build_card(
+    date_str: str,
+    items: list[FrozenItem],
+    *,
+    include_report_link: bool = False,
+) -> dict:
     try:
         parsed_date = datetime.strptime(date_str, "%Y-%m-%d")
     except ValueError as error:
@@ -552,7 +558,15 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
         if recovered_only
         else f"模型判断 {len(highlights)} 条重点，其余按需展开"
     )
-    elements: list[dict] = [
+    elements: list[dict] = []
+    if include_report_link:
+        elements.append(
+            {
+                "tag": "markdown",
+                "content": f"🔗 **[查看完整 AI 新闻]({DAILY_REPORT_URL})**",
+            }
+        )
+    elements.append(
         {
             "tag": "markdown",
             "content": (
@@ -567,7 +581,7 @@ def build_card(date_str: str, items: list[FrozenItem]) -> dict:
                 f"<font color='grey'>{overview_note}</font>"
             ),
         }
-    ]
+    )
     elements.extend(
         _source_section(
             "官方发布",
@@ -693,10 +707,18 @@ def build_cards(date_str: str, items: list[FrozenItem]) -> list[dict]:
     )
     ordered = [item for _, item in ordered_items]
 
-    def pack(group: list[FrozenItem]) -> list[dict]:
+    def pack(
+        group: list[FrozenItem],
+        *,
+        include_report_link: bool,
+    ) -> list[dict]:
         if not group:
             return []
-        grouped_card = build_card(date_str, group)
+        grouped_card = build_card(
+            date_str,
+            group,
+            include_report_link=include_report_link,
+        )
         if len(json.dumps(grouped_card, ensure_ascii=False).encode("utf-8")) <= MAX_CARD_BYTES:
             return [grouped_card]
 
@@ -704,15 +726,29 @@ def build_cards(date_str: str, items: list[FrozenItem]) -> list[dict]:
         current: list[FrozenItem] = []
         for item in group:
             candidate = [*current, item]
-            candidate_card = build_card(date_str, candidate)
+            candidate_card = build_card(
+                date_str,
+                candidate,
+                include_report_link=include_report_link and not packed,
+            )
             size = len(json.dumps(candidate_card, ensure_ascii=False).encode("utf-8"))
             if current and size > MAX_CARD_BYTES:
-                packed.append(build_card(date_str, current))
+                packed.append(
+                    build_card(
+                        date_str,
+                        current,
+                        include_report_link=include_report_link and not packed,
+                    )
+                )
                 current = [item]
             else:
                 current = candidate
         if current:
-            card = build_card(date_str, current)
+            card = build_card(
+                date_str,
+                current,
+                include_report_link=include_report_link and not packed,
+            )
             if len(json.dumps(card, ensure_ascii=False).encode("utf-8")) > MAX_CARD_BYTES:
                 raise ValueError("one digest item exceeds the Feishu card size limit")
             packed.append(card)
@@ -720,7 +756,12 @@ def build_cards(date_str: str, items: list[FrozenItem]) -> list[dict]:
 
     current_items = [item for item in ordered if item.recency_status == "current"]
     recovered_items = [item for item in ordered if item.recency_status == "recovered"]
-    cards = [*pack(current_items), *pack(recovered_items)]
+    current_cards = pack(current_items, include_report_link=True)
+    recovered_cards = pack(
+        recovered_items,
+        include_report_link=not current_cards,
+    )
+    cards = [*current_cards, *recovered_cards]
     if not cards:
         raise ValueError("cannot build a card without items")
     return cards
