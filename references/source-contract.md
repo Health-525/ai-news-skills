@@ -49,18 +49,15 @@
   retaining AI models, agents, inference, coding tools, autonomous systems, robotics, and AI
   infrastructure. The health detail reports how many in-window uploads were filtered off-topic.
 - AIHOT: the official public selected-items API; evidence comes from its supplied summary.
-- GitHub open-source radar: official GitHub repository Search API metadata selected by the topics in
-  `github-radar.json`. It excludes forks, archived repositories, missing descriptions, and projects
-  outside the bounded creation window. On the first run, only recently created repositories meeting
-  both absolute-Star and Star-per-day thresholds are emitted. Later runs compare private SQLite
-  snapshots and emit only repositories meeting the configured Star-gain threshold. Stars, Forks,
-  creation date, and latest push date remain private discovery and ranking data. The summarization
-  evidence contains only the repository owner's API description, so the reader card introduces what
-  the project is instead of listing popularity telemetry. Popularity is not treated as an endorsement
-  or a security review. The collector does not fetch README files, source code, issues, or arbitrary
-  repository links. Search requests run serially, stop after rate-limit exhaustion, reuse a
-  short-lived local cache for same-run retries, and expose stale fallback or query failures in
-  `source_health`.
+- GitHub open-source radar: the official daily GitHub Trending page supplies discovery order and a
+  bounded candidate set. The official repository metadata API enriches each candidate with its
+  owner-provided description, topics, archive/fork status, and current total Stars. A deterministic
+  topic-and-keyword gate retains AI projects and excludes unrelated Trending repositories. Reader
+  evidence contains the project description and current total Star count; daily Star growth, Forks,
+  repository dates, language, license, and topics are not summarized. Popularity is not treated as
+  an endorsement or security review. The collector does not fall back to repository Search, fetch
+  README files, source code, issues, or arbitrary repository links. It preserves Trending order,
+  uses bounded caches, and exposes stale fallback or metadata failures in `source_health`.
 - Security radar: GitHub-reviewed global advisories returned by the official GitHub Advisory API,
   restricted to the package and ecosystem allowlist in `security-advisories.json`. Evidence includes
   the reviewed description, affected range, patched version, CVE/GHSA identifiers, severity, and
@@ -88,9 +85,8 @@
   JSON date is not treated as publication evidence when disabled in source configuration.
   Builders X uses the newest upstream 24-hour snapshot because that feed may refresh many hours
   before the 08:30 run. The feed itself must still be no more than 36 hours old.
-  GitHub radar entries are observation events timestamped when a repository first crosses the
-  bootstrap threshold or later crosses the snapshot-growth threshold; they are not presented as
-  repository publication dates.
+  GitHub radar entries are daily observation events timestamped when they are collected from the
+  Trending page; they are not presented as repository publication dates.
 
 Regulatory and safety coverage includes NIST AI, the European Commission AI policy newsroom, and
 the UK AI Security Institute's official GOV.UK Atom feed. These sources remain attributed public
@@ -171,9 +167,16 @@ Optional environment variables:
 - `AI_NEWS_YOUTUBE_CHANNELS_FILE`: external channel-list override.
 - `AI_NEWS_OFFICIAL_SOURCES_FILE`: external official-source-list override.
 - `AI_NEWS_INDUSTRY_DIGEST_SOURCES_FILE`: external editorial-feed-list override.
-- `AI_NEWS_GITHUB_RADAR_FILE`: external GitHub topic and threshold configuration override.
+- `AI_NEWS_GITHUB_RADAR_FILE`: external GitHub Trending AI-filter configuration override.
 - `AI_NEWS_GITHUB_TOKEN`: optional read-only GitHub API token. Public collection works without it;
   when configured, keep it only in the private runtime environment and grant no write permission.
+- `AI_NEWS_FEISHU_APP_ID`: optional Feishu custom-app ID override used by the Bitable publisher.
+- `AI_NEWS_FEISHU_APP_SECRET`: optional custom-app secret override; configure it together with the app ID.
+- `AI_NEWS_BITABLE_APP_TOKEN`: target Bitable app token.
+- `AI_NEWS_BITABLE_TABLE_ID`: target AI news table ID.
+- `AI_NEWS_OPENCLAW_CONFIG`: optional OpenClaw config path override. When the explicit Feishu credential
+  pair is absent, the publisher reuses the single Feishu account found in this local config. Multiple
+  accounts require `OPENCLAW_FEISHU_ACCOUNT_ID`.
 - `AI_NEWS_SECURITY_ADVISORIES_FILE`: external security package allowlist override.
 - `AI_NEWS_HUGGINGFACE_RADAR_FILE`: external model-organization allowlist override.
 - `AI_NEWS_HUGGINGFACE_TOKEN`: optional read-only Hugging Face token for higher rate limits.

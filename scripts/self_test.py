@@ -13,16 +13,16 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from daily_pipeline import _handle_scheduled_group
+from daily_pipeline import _handle_platform_publish, _handle_scheduled_group
 from radar.approval import build_approval_card
 from radar.delivery import _parse_bridge_payload, send_group_cards, send_personal_cards
 from radar.digest import FrozenItem, build_card, build_cards, validate_frozen_digest
 from radar.github_radar import (
-    GitHubRateLimitError,
     fetch_github_trending,
     load_github_radar_config,
 )
 from radar.models import ContentItem
+from radar.platform_publish import build_platform_payload, publish_platform_payload
 from radar.release_announcement import build_release_card, load_release_manifest
 from radar.official_news import (
     OfficialSource,
@@ -73,13 +73,9 @@ def main() -> int:
     github_config = load_github_radar_config(
         Path(__file__).resolve().parents[1] / "references" / "github-radar.json"
     )
-    assert github_config["topics"] == [
-        "ai-agents",
-        "artificial-intelligence",
-        "generative-ai",
-        "large-language-models",
-        "model-context-protocol",
-    ]
+    assert github_config["period"] == "daily"
+    assert "ai-agents" in github_config["ai_topics"]
+    assert "large language model" in github_config["ai_keywords"]
     assert github_config["max_items"] == 12
     with tempfile.TemporaryDirectory() as temporary:
         release_manifest_path = Path(temporary) / "release.json"
@@ -757,6 +753,7 @@ def main() -> int:
     assert volcengine_items[0].url.endswith("/23")
 
     source = {
+        "date": "2026-07-20",
         "items": [
             {
                 "id": "video-1",
@@ -803,6 +800,188 @@ def main() -> int:
     recovered_intro = cards[1]["body"]["elements"][0]["content"]
     assert "今日最新 1 条信号" in current_intro and "当期 1 · 补录 0" in current_intro
     assert "补录 1 条信号" in recovered_intro and "当期 0 · 补录 1" in recovered_intro
+
+    platform_source = json.loads(json.dumps(source))
+    platform_source["date"] = "2026-07-20"
+    platform_source["items"][0]["published_at"] = "2026-07-20T08:00:00+08:00"
+    platform_source["items"][1]["published_at"] = "2026-07-19T08:00:00+08:00"
+    platform_payload = build_platform_payload(
+        platform_source,
+        markdown,
+        datetime(2026, 7, 20, 1, 0, tzinfo=timezone.utc),
+    )
+    platform_records = platform_payload["records"]
+    assert isinstance(platform_records, list) and len(platform_records) == 2
+    assert platform_records[0] == {
+        "record_key": "2026-07-20:video-1",
+        "news_id": "video-1",
+        "report_date": "2026-07-20",
+        "section": "YouTube",
+        "source_type": "youtube",
+        "title": "Example update",
+        "summary": "该来源介绍了一套可复现指标的智能体评估流程。",
+        "source_name": "YouTube · Example",
+        "original_url": "https://www.youtube.com/watch?v=video-1",
+        "published_at": "2026-07-20T08:00:00+08:00",
+        "is_highlight": True,
+        "is_recovered": False,
+        "is_available": True,
+        "github_total_stars": None,
+        "rank_position": 1,
+        "uploaded_at": "2026-07-20T01:00:00+00:00",
+    }
+    assert platform_records[1]["is_recovered"] is True
+    assert platform_records[1]["is_available"] is False
+    assert publish_platform_payload(
+        platform_payload, Path("unused-receipt.json"), dry_run=True
+    ) == {
+        "status": "dry_run",
+        "records": 2,
+        "report_date": "2026-07-20",
+    }
+
+    github_platform_source = {
+        "date": "2026-07-20",
+        "items": [
+            {
+                "id": "repo-1",
+                "source_type": "github_trending",
+                "recency_status": "current",
+                "source": "GitHub 开源雷达 · GitHub Trending",
+                "title": "example/agent-runtime",
+                "published_at": "2026-07-20T08:00:00+00:00",
+                "url": "https://github.com/example/agent-runtime",
+                "source_text_status": "available",
+                "source_text": (
+                    "The owner describes this as an AI agent runtime. "
+                    "GitHub reports 12,345 total Stars for this public repository."
+                ),
+                "unavailable_reason": "",
+                "recommendation": "",
+            }
+        ],
+    }
+    github_platform_markdown = """# AI 前哨 | 2026-07-20
+
+### 1. [example/agent-runtime](https://github.com/example/agent-runtime)
+- 来源：GitHub 开源雷达 · GitHub Trending
+- 重点：是
+- 来源摘要：这是一个 AI 智能体运行时项目，当前共有 12,345 Star。
+"""
+    github_platform_payload = build_platform_payload(
+        github_platform_source, github_platform_markdown
+    )
+    assert github_platform_payload["records"][0]["github_total_stars"] == 12345
+    assert github_platform_payload["payload_sha256"] == build_platform_payload(
+        github_platform_source, github_platform_markdown
+    )["payload_sha256"]
+
+    bitable_env = {
+        "AI_NEWS_FEISHU_APP_ID": "test-app-id",
+        "AI_NEWS_FEISHU_APP_SECRET": "test-app-secret",
+        "AI_NEWS_BITABLE_APP_TOKEN": "test-app-token",
+        "AI_NEWS_BITABLE_TABLE_ID": "test-table-id",
+    }
+    bitable_env_keys = {*bitable_env, "AI_NEWS_OPENCLAW_CONFIG"}
+    original_bitable_env = {key: os.environ.get(key) for key in bitable_env_keys}
+    with tempfile.TemporaryDirectory() as temporary:
+        os.environ.update(bitable_env)
+        received: list[dict[str, object]] = []
+
+        def bitable_requester(
+            method: str,
+            url: str,
+            headers: dict[str, str],
+            request_payload: dict[str, object] | None,
+        ) -> dict[str, object]:
+            received.append(
+                {
+                    "method": method,
+                    "url": url,
+                    "headers": headers,
+                    "payload": request_payload,
+                }
+            )
+            if url.endswith("/tenant_access_token/internal"):
+                return {"code": 0, "tenant_access_token": "test-tenant-token"}
+            if method == "GET":
+                return {
+                    "code": 0,
+                    "data": {
+                        "items": [
+                            {
+                                "record_id": "record-existing",
+                                "fields": {
+                                    "记录键": [
+                                        {"type": "text", "text": "2026-07-20:item-2"}
+                                    ]
+                                },
+                            }
+                        ],
+                        "has_more": False,
+                    },
+                }
+            return {"code": 0, "data": {"records": []}}
+
+        receipt_path = Path(temporary) / "platform-receipt.json"
+        published = publish_platform_payload(
+            platform_payload, receipt_path, requester=bitable_requester
+        )
+        assert published == {
+            "status": "published",
+            "records": 2,
+            "created": 1,
+            "updated": 1,
+        }
+        assert len(received) == 4
+        create_call = next(call for call in received if "batch_create" in str(call["url"]))
+        update_call = next(call for call in received if "batch_update" in str(call["url"]))
+        create_records = create_call["payload"]["records"]
+        update_records = update_call["payload"]["records"]
+        assert len(create_records) == 1 and len(update_records) == 1
+        assert create_records[0]["fields"]["记录键"] == "2026-07-20:video-1"
+        assert create_records[0]["fields"]["板块"] == "YouTube"
+        assert create_records[0]["fields"]["原文链接"]["link"].startswith("https://")
+        assert update_records[0]["record_id"] == "record-existing"
+        assert publish_platform_payload(
+            platform_payload, receipt_path, requester=bitable_requester
+        )["status"] == "skipped"
+        fallback_config = Path(temporary) / "openclaw.json"
+        fallback_config.write_text(
+            json.dumps(
+                {
+                    "channels": {
+                        "feishu": {
+                            "accounts": {
+                                "default": {
+                                    "appId": "fallback-app-id",
+                                    "appSecret": "fallback-app-secret",
+                                }
+                            }
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.environ.pop("AI_NEWS_FEISHU_APP_ID")
+        os.environ.pop("AI_NEWS_FEISHU_APP_SECRET")
+        os.environ["AI_NEWS_OPENCLAW_CONFIG"] = str(fallback_config)
+        fallback_receipt = Path(temporary) / "fallback-platform-receipt.json"
+        received.clear()
+        assert publish_platform_payload(
+            platform_payload, fallback_receipt, requester=bitable_requester
+        )["status"] == "published"
+        token_call = received[0]
+        assert token_call["payload"] == {
+            "app_id": "fallback-app-id",
+            "app_secret": "fallback-app-secret",
+        }
+    for key, original in original_bitable_env.items():
+        if original is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = original
 
     numeric_source = {
         "items": [
@@ -1038,89 +1217,108 @@ def main() -> int:
         "no_signal": 0,
         "promotion": 1,
     }
-    github_record = {
-        "full_name": "example/agent-runtime",
-        "html_url": "https://github.com/example/agent-runtime",
-        "description": "A production-oriented runtime for reliable AI agents and tool execution.",
-        "created_at": "2026-07-29T00:00:00Z",
-        "pushed_at": "2026-08-05T00:00:00Z",
-        "stargazers_count": 1000,
-        "forks_count": 120,
-        "language": "Python",
-        "license": {"spdx_id": "Apache-2.0"},
-        "topics": ["ai-agents", "agent-runtime"],
-        "archived": False,
-        "fork": False,
-    }
+    github_html = b"""
+    <article class="Box-row">
+      <a href="/sponsors/wrong-owner">Sponsor</a>
+      <h2><a href="/example/agent-runtime">example / agent-runtime</a></h2>
+      <p class="col-9 color-fg-muted my-1 tmp-pr-4">
+        A production-oriented runtime for reliable AI agents and tool execution.
+      </p>
+      <a href="/example/agent-runtime/stargazers"><svg><path></path></svg>950</a>
+      <span class="d-inline-block float-sm-right">150 stars today</span>
+    </article>
+    <article class="Box-row">
+      <h2><a href="/example/version-manager">example / version-manager</a></h2>
+      <p class="col-9 color-fg-muted my-1 tmp-pr-4">
+        A fast version manager for command-line developer environments.
+      </p>
+      <a href="/example/version-manager/stargazers">2,000</a>
+      <span class="d-inline-block float-sm-right">80 stars today</span>
+    </article>
+    """
     test_github_config = {
-        "discovery_days": 45,
-        "bootstrap_days": 30,
-        "min_initial_stars": 500,
-        "min_initial_stars_per_day": 30,
-        "min_star_gain": 100,
-        "max_candidates_per_query": 20,
-        "max_items": 12,
-        "topics": ["ai-agents"],
+        "period": "daily",
+        "max_candidates": 10,
+        "max_items": 5,
+        "ai_topics": ["ai-agents", "generative-ai"],
+        "ai_keywords": ["ai agent", "ai agents", "generative ai"],
     }
 
-    def github_fetcher(_url: str, _storage: Storage) -> dict[str, object]:
-        return {"payload": {"items": [github_record]}, "cache_mode": "fresh"}
+    def github_page_fetcher(_url: str, _storage: Storage) -> dict[str, object]:
+        return {"body": github_html, "cache_mode": "fresh"}
+
+    def github_repository_fetcher(url: str, _storage: Storage) -> dict[str, object]:
+        if url.endswith("example/agent-runtime"):
+            payload = {
+                "description": "A production-oriented runtime for reliable AI agents and tool execution.",
+                "stargazers_count": 1234,
+                "topics": ["ai-agents", "agent-runtime"],
+                "archived": False,
+                "fork": False,
+            }
+        else:
+            payload = {
+                "description": "A fast version manager for command-line developer environments.",
+                "stargazers_count": 2000,
+                "topics": ["version-manager"],
+                "archived": False,
+                "fork": False,
+            }
+        return {"payload": payload, "cache_mode": "fresh"}
 
     github_now = datetime(2026, 8, 5, 0, 30, tzinfo=timezone.utc)
     with tempfile.TemporaryDirectory() as temporary:
         github_storage = Storage(Path(temporary))
         github_storage.initialize()
         github_items, github_health = fetch_github_trending(
-            test_github_config, github_storage, github_now, github_fetcher
+            test_github_config,
+            github_storage,
+            github_now,
+            github_page_fetcher,
+            github_repository_fetcher,
         )
         assert len(github_items) == 1 and github_health.status == "ok"
         assert github_items[0].source_type == "github_trending"
+        assert github_items[0].source.endswith("GitHub Trending")
         assert "production-oriented runtime" in github_items[0].raw_source_text
-        assert "Star" not in github_items[0].raw_source_text
+        assert "1,234 total Stars" in github_items[0].raw_source_text
+        assert "stars today" not in github_items[0].raw_source_text
         assert "Fork" not in github_items[0].raw_source_text
         assert "2026-" not in github_items[0].raw_source_text
         assert github_items[0].dedup_identity.endswith("#trend-date=2026-08-05")
-        stored_snapshot = github_storage.previous_github_snapshot(
-            "example/agent-runtime", "2026-08-06"
-        )
-        assert stored_snapshot is not None
-        assert stored_snapshot["stars"] == 1000
-        assert stored_snapshot["forks"] == 120
+
+    def unavailable_metadata(_url: str, _storage: Storage) -> dict[str, object]:
+        raise OSError("repository metadata unavailable")
+
     with tempfile.TemporaryDirectory() as temporary:
         github_storage = Storage(Path(temporary))
         github_storage.initialize()
-        github_storage.put_github_snapshot(
-            "example/agent-runtime",
-            "2026-08-04",
-            850,
-            100,
-            datetime(2026, 8, 4, 0, 0, tzinfo=timezone.utc),
-            datetime(2026, 8, 4, 0, 30, tzinfo=timezone.utc),
-        )
-        github_items, _ = fetch_github_trending(
-            test_github_config, github_storage, github_now, github_fetcher
-        )
-        assert len(github_items) == 1
-        assert "production-oriented runtime" in github_items[0].raw_source_text
-        assert "150 Star" not in github_items[0].raw_source_text
-    with tempfile.TemporaryDirectory() as temporary:
-        github_storage = Storage(Path(temporary))
-        github_storage.initialize()
-        rate_limited_config = dict(test_github_config)
-        rate_limited_config["topics"] = ["ai-agents", "generative-ai"]
-        rate_limit_calls = 0
-
-        def rate_limited_fetcher(_url: str, _storage: Storage) -> dict[str, object]:
-            nonlocal rate_limit_calls
-            rate_limit_calls += 1
-            raise GitHubRateLimitError("GitHub search rate limit exhausted")
-
         github_items, github_health = fetch_github_trending(
-            rate_limited_config, github_storage, github_now, rate_limited_fetcher
+            test_github_config,
+            github_storage,
+            github_now,
+            github_page_fetcher,
+            unavailable_metadata,
+        )
+        assert len(github_items) == 1 and github_health.status == "warn"
+        assert "950 total Stars" in github_items[0].raw_source_text
+        assert github_health.failed == 2
+
+    def invalid_github_page(_url: str, _storage: Storage) -> dict[str, object]:
+        return {"body": b"<html></html>", "cache_mode": "fresh"}
+
+    with tempfile.TemporaryDirectory() as temporary:
+        github_storage = Storage(Path(temporary))
+        github_storage.initialize()
+        github_items, github_health = fetch_github_trending(
+            test_github_config,
+            github_storage,
+            github_now,
+            invalid_github_page,
+            github_repository_fetcher,
         )
         assert not github_items and github_health.status == "error"
-        assert rate_limit_calls == 1
-        assert github_health.checks[1].detail == "skipped after rate limit"
+        assert github_health.checks[0].name == "trending-page"
     x_card = build_card(
         "2026-07-20",
         [
@@ -1465,6 +1663,14 @@ def main() -> int:
             "cards": len(cards),
             "delivery_mode": "scheduled_group",
         }
+        output = io.StringIO()
+        with redirect_stdout(output):
+            platform_code = _handle_platform_publish("2026-07-20", dry_run=True)
+        platform_result = json.loads(output.getvalue())
+        assert platform_code == 0
+        assert platform_result["status"] == "dry_run"
+        assert platform_result["records"] == 2
+        assert paths["platform"].is_file()
         target = "private-test-target"
         cards_bytes = json.dumps(cards, ensure_ascii=False, sort_keys=True).encode("utf-8")
         target_hash = hashlib.sha256(target.encode("utf-8")).hexdigest()

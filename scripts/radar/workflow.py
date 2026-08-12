@@ -24,6 +24,7 @@ from .newsroom import (
     newsroom_summary,
 )
 from .official_news import COLLECTION_LOOKBACK_HOURS, load_official_sources
+from .platform_publish import validate_platform_configuration
 from .security_advisories import GITHUB_ADVISORIES_API, load_security_advisory_config
 from .source_material import source_text_status
 from .sources import (
@@ -47,7 +48,12 @@ RUNTIME_ENV_KEYS = {
     "AI_NEWS_HUGGINGFACE_TOKEN",
     "AI_NEWS_MIN_OFFICIAL_SOURCE_RATIO",
     "AI_NEWS_OFFICIAL_SOURCES_FILE",
+    "AI_NEWS_OPENCLAW_CONFIG",
     "AI_NEWS_OWNER_ID",
+    "AI_NEWS_BITABLE_APP_TOKEN",
+    "AI_NEWS_BITABLE_TABLE_ID",
+    "AI_NEWS_FEISHU_APP_ID",
+    "AI_NEWS_FEISHU_APP_SECRET",
     "AI_NEWS_REQUIRED_OFFICIAL_SOURCES",
     "AI_NEWS_RELEASE_ANNOUNCEMENTS",
     "AI_NEWS_SECURITY_ADVISORIES_FILE",
@@ -162,9 +168,11 @@ def artifact_paths(date_str: str) -> dict[str, Path]:
         "source": reports / f"{date_str}_rss_sources.json",
         "digest": reports / f"{date_str}_digest.md",
         "cards": reports / f"{date_str}_cards.json",
+        "platform": reports / f"{date_str}_platform.json",
         "breaking_json": reports / f"{date_str}_breaking.json",
         "breaking_markdown": reports / f"{date_str}_breaking.md",
         "receipt": root / "receipts" / f"{date_str}.json",
+        "platform_receipt": root / "receipts" / "platform" / f"{date_str}.json",
         "lock": root / "locks" / "daily.lock",
     }
 
@@ -237,7 +245,20 @@ def doctor(*, live: bool = False) -> dict[str, object]:
         add(
             "github-radar",
             "ok",
-            f"{len(github_config['topics'])} valid topics; max {github_config['max_items']} items",
+            f"daily Trending; {len(github_config['ai_topics'])} AI topics; "
+            f"max {github_config['max_items']} items",
+        )
+    try:
+        platform_enabled = validate_platform_configuration()
+    except ValueError as error:
+        add("platform-publish", "error", str(error))
+    else:
+        add(
+            "platform-publish",
+            "ok",
+            "configured Feishu Bitable publisher"
+            if platform_enabled
+            else "optional publisher disabled",
         )
     try:
         security_config = load_security_advisory_config(security_advisories_file())

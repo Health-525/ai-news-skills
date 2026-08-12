@@ -44,10 +44,15 @@ label recovered overlap records as catch-up coverage rather than current-window 
 validate the native cards, and call scheduled-group for the configured group. Treat domestic and
 international official releases, stable GitHub releases, and API changelogs as
 attributed vendor claims, not independent verification. Treat industry digests as attributed
-editorial synthesis. Treat GitHub radar descriptions as repository-owner claims and Star growth as
-a private popularity signal, not a quality or security review. For GitHub radar summaries, directly
-explain what the project is, what problem it addresses, and its primary use; omit Stars, Forks,
-growth, repository dates, language, license, and topics. Never fetch transcripts, use S3, create a
+editorial synthesis. Treat GitHub radar descriptions as repository-owner claims and total Stars as
+a popularity count, not a quality or security review. For GitHub radar summaries, directly explain
+what the project is, what problem it addresses, and its primary use, and include its current total
+Star count; omit daily growth, Forks, repository dates, language, license, and topics. Never fetch
+transcripts, use S3, create a
 preview draft, request approval, or send a release announcement. Treat only structured sent or a
 matching skipped receipt as successful group delivery.
 ```
+
+When `doctor` reports a configured platform publisher, call `platform-publish` after card
+validation and before `scheduled-group`. Platform failure must be reported but must not suppress the
+group digest. The command publishes only the reader-facing fields in `platform-contract.md`.

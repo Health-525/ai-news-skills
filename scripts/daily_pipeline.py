@@ -10,6 +10,7 @@ from pathlib import Path
 
 from radar.approval import build_approval_card
 from radar.delivery import send_group_cards, send_personal_cards
+from radar.platform_publish import export_platform_payload, publish_platform_payload
 from radar.release_announcement import build_release_card, load_release_manifest
 from radar.storage import Storage
 from radar.subscriptions import (
@@ -61,10 +62,11 @@ def _parser() -> argparse.ArgumentParser:
         ("card", "Validate frozen Markdown and render cards"),
         ("preview", "Send owner preview and create an approval draft"),
         ("scheduled-group", "Send validated cards to the configured group without approval"),
+        ("platform-publish", "Publish the validated digest to the configured news platform"),
     ):
         command_parser = subparsers.add_parser(command, help=help_text)
         command_parser.add_argument("date", nargs="?", help="YYYY-MM-DD; defaults to Shanghai today")
-        if command in {"preview", "scheduled-group"}:
+        if command in {"preview", "scheduled-group", "platform-publish"}:
             command_parser.add_argument("--dry-run", action="store_true")
 
     send_parser = subparsers.add_parser("send", help="Send the validated private owner card")
@@ -175,6 +177,27 @@ def _send_personal(cards: list[dict], receipt: Path, dry_run: bool = False) -> t
         skill_root() / "scripts" / "send_feishu_card.mjs",
         dry_run=dry_run,
     )
+
+
+def _handle_platform_publish(date_str: str, dry_run: bool = False) -> int:
+    validation_code, validation = render_cards(date_str)
+    if validation_code:
+        _print(validation)
+        return validation_code
+    paths = artifact_paths(date_str)
+    try:
+        payload = export_platform_payload(
+            paths["source"], paths["digest"], paths["platform"]
+        )
+        result = publish_platform_payload(
+            payload, paths["platform_receipt"], dry_run=dry_run
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        _print({"status": "failed", "stage": "platform-publish", "error": str(error)})
+        return 1
+    result["platform_file"] = str(paths["platform"])
+    _print(result)
+    return 0
 
 
 def _handle_subscription(args: argparse.Namespace) -> int:
@@ -434,6 +457,8 @@ def main() -> int:
         return _handle_preview(date_str, args.dry_run)
     if args.command == "scheduled-group":
         return _handle_scheduled_group(date_str, args.dry_run)
+    if args.command == "platform-publish":
+        return _handle_platform_publish(date_str, args.dry_run)
     if args.command == "send":
         exit_code, cards_or_error = _cards(date_str)
         if exit_code:

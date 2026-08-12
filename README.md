@@ -51,7 +51,7 @@ flowchart LR
         B["Industry RSS"]
         C["YouTube RSS<br/>Descriptions"]
         D["AIHOT"]
-        E["GitHub Radar<br/>Official API"]
+        E["GitHub Trending<br/>Official Page + API"]
         P["Security Advisories<br/>Reviewed API"]
         Q["Hugging Face<br/>Model Metadata"]
         N["Builders X<br/>Allowlist"]
@@ -172,6 +172,7 @@ python scripts/daily_pipeline.py doctor
 python scripts/daily_pipeline.py prepare YYYY-MM-DD
 # OpenClaw 在此处写入返回的 digest_file
 python scripts/daily_pipeline.py card YYYY-MM-DD
+python scripts/daily_pipeline.py platform-publish YYYY-MM-DD --dry-run
 python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 ```
 
@@ -207,7 +208,7 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | --- | --- |
 | `references/official-news-sources.json` | 官方 RSS、Changelog、Newsroom、GitHub Releases 与一手接口 |
 | `references/industry-digest-sources.json` | 公司导向的行业与编辑型 RSS |
-| `references/github-radar.json` | GitHub AI 主题、发现窗口与热度阈值 |
+| `references/github-radar.json` | GitHub Trending 的 AI 主题、关键词与候选上限 |
 | `references/security-advisories.json` | GitHub 审查安全公告的 AI 依赖包白名单 |
 | `references/huggingface-radar.json` | Hugging Face 模型发布组织白名单 |
 | `references/youtube-channels.json` | 初始 YouTube 频道种子列表 |
@@ -248,6 +249,11 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `AI_NEWS_INDUSTRY_DIGEST_SOURCES_FILE` | 行业 RSS 配置覆盖文件 |
 | `AI_NEWS_GITHUB_RADAR_FILE` | GitHub 开源雷达配置覆盖文件 |
 | `AI_NEWS_GITHUB_TOKEN` | 可选的只读 GitHub API 令牌 |
+| `AI_NEWS_FEISHU_APP_ID` | 可选；覆盖 OpenClaw 本机飞书应用 ID |
+| `AI_NEWS_FEISHU_APP_SECRET` | 可选；与应用 ID 成对覆盖 OpenClaw 本机飞书应用密钥 |
+| `AI_NEWS_BITABLE_APP_TOKEN` | AI 新闻多维表格 App Token |
+| `AI_NEWS_BITABLE_TABLE_ID` | AI 新闻数据表 ID |
+| `AI_NEWS_OPENCLAW_CONFIG` | 可选；OpenClaw 配置文件路径覆盖 |
 | `AI_NEWS_SECURITY_ADVISORIES_FILE` | 安全公告依赖白名单覆盖文件 |
 | `AI_NEWS_HUGGINGFACE_RADAR_FILE` | 模型 Hub 组织白名单覆盖文件 |
 | `AI_NEWS_HUGGINGFACE_TOKEN` | 可选的只读 Hugging Face 令牌 |
