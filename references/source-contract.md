@@ -180,6 +180,8 @@ Optional environment variables:
 - `AI_NEWS_SECURITY_ADVISORIES_FILE`: external security package allowlist override.
 - `AI_NEWS_HUGGINGFACE_RADAR_FILE`: external model-organization allowlist override.
 - `AI_NEWS_HUGGINGFACE_TOKEN`: optional read-only Hugging Face token for higher rate limits.
+- `AI_NEWS_SUPADATA_API_KEY`: optional Supadata credential for authenticated, group-only, native-mode
+  YouTube transcript requests. It is forbidden in scheduled collection and paid generation modes.
 - `AI_NEWS_MIN_OFFICIAL_SOURCE_RATIO`: official-source publication ratio from `0` through `1`;
   default `0.65`.
 - `AI_NEWS_REQUIRED_OFFICIAL_SOURCES`: optional comma-separated official source names that must be

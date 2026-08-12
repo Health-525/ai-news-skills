@@ -57,6 +57,7 @@ RUNTIME_ENV_KEYS = {
     "AI_NEWS_REQUIRED_OFFICIAL_SOURCES",
     "AI_NEWS_RELEASE_ANNOUNCEMENTS",
     "AI_NEWS_SECURITY_ADVISORIES_FILE",
+    "AI_NEWS_SUPADATA_API_KEY",
     "OPENCLAW_FEISHU_ACCOUNT_ID",
 }
 PRIMARY_WINDOW_HOURS = 24
@@ -260,6 +261,13 @@ def doctor(*, live: bool = False) -> dict[str, object]:
             if platform_enabled
             else "optional publisher disabled",
         )
+    add(
+        "on-demand-transcript",
+        "ok",
+        "configured Supadata native-only transcript service"
+        if os.environ.get("AI_NEWS_SUPADATA_API_KEY", "").strip()
+        else "optional transcript service disabled",
+    )
     try:
         security_config = load_security_advisory_config(security_advisories_file())
     except ValueError as error:

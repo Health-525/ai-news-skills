@@ -14,7 +14,7 @@ from typing import Literal
 
 from .models import ContentItem
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class _ClosingConnection(sqlite3.Connection):
@@ -141,6 +141,23 @@ class Storage:
                     total INTEGER NOT NULL,
                     available INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS transcript_requests (
+                    request_id TEXT PRIMARY KEY,
+                    requester_hash TEXT NOT NULL,
+                    request_date TEXT NOT NULL,
+                    video_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    outcome TEXT NOT NULL DEFAULT '',
+                    is_owner INTEGER NOT NULL,
+                    requested_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    last_error TEXT NOT NULL DEFAULT ''
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_transcript_daily_quota
+                ON transcript_requests (requester_hash, request_date)
+                WHERE is_owner = 0 AND status IN ('pending', 'consumed');
+                CREATE INDEX IF NOT EXISTS idx_transcript_requests_requested
+                ON transcript_requests (requested_at, status);
                 """
             )
             connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -331,6 +348,85 @@ class Storage:
         if not normalized:
             raise ValueError("identity must not be empty")
         return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+    def reserve_transcript_request(
+        self,
+        requester_id: str,
+        request_date: str,
+        video_id: str,
+        *,
+        is_owner: bool,
+    ) -> str:
+        requester_hash = self.identity_hash(requester_id)
+        now = datetime.now(timezone.utc)
+        stale_before = (now - timedelta(minutes=10)).isoformat()
+        request_id = secrets.token_urlsafe(18)
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """
+                UPDATE transcript_requests
+                SET status = 'failed', completed_at = ?, last_error = 'stale reservation'
+                WHERE status = 'pending' AND requested_at < ?
+                """,
+                (now.isoformat(), stale_before),
+            )
+            if not is_owner:
+                existing = connection.execute(
+                    """
+                    SELECT 1 FROM transcript_requests
+                    WHERE requester_hash = ? AND request_date = ?
+                      AND status IN ('pending', 'consumed')
+                    LIMIT 1
+                    """,
+                    (requester_hash, request_date),
+                ).fetchone()
+                if existing:
+                    raise ValueError("daily transcript quota already used")
+            connection.execute(
+                """
+                INSERT INTO transcript_requests (
+                    request_id, requester_hash, request_date, video_id, status,
+                    is_owner, requested_at
+                ) VALUES (?, ?, ?, ?, 'pending', ?, ?)
+                """,
+                (
+                    request_id,
+                    requester_hash,
+                    request_date,
+                    video_id,
+                    int(is_owner),
+                    now.isoformat(),
+                ),
+            )
+        return request_id
+
+    def finish_transcript_request(
+        self,
+        request_id: str,
+        *,
+        consumed: bool,
+        outcome: str,
+        error: str = "",
+    ) -> None:
+        status = "consumed" if consumed else "failed"
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE transcript_requests
+                SET status = ?, outcome = ?, completed_at = ?, last_error = ?
+                WHERE request_id = ? AND status = 'pending'
+                """,
+                (
+                    status,
+                    outcome[:40],
+                    datetime.now(timezone.utc).isoformat(),
+                    error[:240],
+                    request_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("transcript request is not pending")
 
     def seed_subscriptions(self, channels: list[dict[str, str]]) -> None:
         now = datetime.now(timezone.utc).isoformat()
@@ -805,6 +901,7 @@ class Storage:
             "subscription_proposals": ("expires_at < ? AND status != 'pending'", general_cutoff),
             "digest_drafts": ("expires_at < ? AND status NOT IN ('pending', 'sending')", general_cutoff),
             "github_repository_snapshots": ("observed_date < ?", snapshot_cutoff),
+            "transcript_requests": ("requested_at < ? AND status != 'pending'", general_cutoff),
         }
         counts: dict[str, int] = {}
         with self._connect() as connection:

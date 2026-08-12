@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import os
 from datetime import datetime
@@ -11,6 +12,12 @@ from pathlib import Path
 from radar.approval import build_approval_card
 from radar.delivery import send_group_cards, send_personal_cards
 from radar.platform_publish import export_platform_payload, publish_platform_payload
+from radar.on_demand_transcript import (
+    TranscriptRequestError,
+    canonical_youtube_video_url,
+    fetch_native_transcript,
+    write_transcript_artifact,
+)
 from radar.release_announcement import build_release_card, load_release_manifest
 from radar.storage import Storage
 from radar.subscriptions import (
@@ -91,6 +98,14 @@ def _parser() -> argparse.ArgumentParser:
     cancel_parser.add_argument("--proposal-id")
 
     subparsers.add_parser("subscriptions", help="List active subscriptions")
+
+    transcript_parser = subparsers.add_parser(
+        "youtube-transcript",
+        help="Fetch one native YouTube transcript under the requester daily quota",
+    )
+    transcript_parser.add_argument("--requester-id", required=True)
+    transcript_parser.add_argument("--url", required=True)
+    transcript_parser.add_argument("--context", required=True, choices=("group",))
 
     trend_parser = subparsers.add_parser(
         "trend-report", help="Build a deterministic multi-day intelligence report"
@@ -197,6 +212,97 @@ def _handle_platform_publish(date_str: str, dry_run: bool = False) -> int:
         return 1
     result["platform_file"] = str(paths["platform"])
     _print(result)
+    return 0
+
+
+def _handle_youtube_transcript(args: argparse.Namespace) -> int:
+    api_key = _target("AI_NEWS_SUPADATA_API_KEY")
+    owner_id = _target("AI_NEWS_OWNER_ID")
+    if not api_key or not owner_id:
+        _print({"status": "failed", "error": "on-demand transcript service is not configured"})
+        return 1
+    try:
+        video_id, canonical_url = canonical_youtube_video_url(args.url)
+    except ValueError as error:
+        _print({"status": "invalid_request", "error": str(error)})
+        return 1
+
+    request_date = datetime.now(REPORT_TIMEZONE).strftime("%Y-%m-%d")
+    is_owner = hmac.compare_digest(args.requester_id.strip(), owner_id)
+    storage = _storage()
+    try:
+        request_id = storage.reserve_transcript_request(
+            args.requester_id,
+            request_date,
+            video_id,
+            is_owner=is_owner,
+        )
+    except ValueError as error:
+        status = "quota_exhausted" if "quota" in str(error) else "failed"
+        _print(
+            {
+                "status": status,
+                "error": (
+                    "普通成员每天仅可使用一次 YouTube 字幕服务，请明天再试。"
+                    if status == "quota_exhausted"
+                    else str(error)
+                ),
+                "quota": "unlimited" if is_owner else "0_remaining",
+            }
+        )
+        return 1
+
+    try:
+        result = fetch_native_transcript(canonical_url, api_key)
+        transcript_file = write_transcript_artifact(
+            state_dir(), request_date, request_id, result
+        )
+    except TranscriptRequestError as error:
+        storage.finish_transcript_request(
+            request_id,
+            consumed=error.consumes_quota,
+            outcome="unavailable" if error.consumes_quota else "upstream_failed",
+            error=str(error),
+        )
+        _print(
+            {
+                "status": "unavailable" if error.consumes_quota else "failed",
+                "error": str(error),
+                "quota": "unlimited" if is_owner else (
+                    "0_remaining" if error.consumes_quota else "1_remaining"
+                ),
+            }
+        )
+        return 1
+    except (OSError, ValueError) as error:
+        storage.finish_transcript_request(
+            request_id,
+            consumed=True,
+            outcome="artifact_failed",
+            error=type(error).__name__,
+        )
+        _print(
+            {
+                "status": "failed",
+                "error": "字幕已获取，但私有文件保存失败。",
+                "quota": "unlimited" if is_owner else "0_remaining",
+            }
+        )
+        return 1
+
+    storage.finish_transcript_request(
+        request_id, consumed=True, outcome="available"
+    )
+    _print(
+        {
+            "status": "available",
+            "source": result["url"],
+            "language": result["language"],
+            "characters": len(str(result["content"])),
+            "transcript_file": str(transcript_file),
+            "quota": "unlimited" if is_owner else "0_remaining",
+        }
+    )
     return 0
 
 
@@ -389,6 +495,8 @@ def main() -> int:
         return 1 if result["status"] == "error" else 0
     if args.command == "release-announcement":
         return _handle_release_announcement(args)
+    if args.command == "youtube-transcript":
+        return _handle_youtube_transcript(args)
     if args.command in {
         "subscription-form",
         "subscription-propose",

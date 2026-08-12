@@ -257,6 +257,7 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `AI_NEWS_SECURITY_ADVISORIES_FILE` | 安全公告依赖白名单覆盖文件 |
 | `AI_NEWS_HUGGINGFACE_RADAR_FILE` | 模型 Hub 组织白名单覆盖文件 |
 | `AI_NEWS_HUGGINGFACE_TOKEN` | 可选的只读 Hugging Face 令牌 |
+| `AI_NEWS_SUPADATA_API_KEY` | 可选；群内按需获取 YouTube 原生字幕，不用于日报采集 |
 | `AI_NEWS_MIN_OFFICIAL_SOURCE_RATIO` | 官方来源发布门禁，默认 `0.65` |
 | `AI_NEWS_REQUIRED_OFFICIAL_SOURCES` | 必须健康的官方来源名称列表 |
 | `AI_NEWS_YOUTUBE_CHANNELS_FILE` | YouTube 频道配置覆盖文件 |

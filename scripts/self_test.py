@@ -8,6 +8,7 @@ import io
 import json
 import os
 import tempfile
+import urllib.parse
 from contextlib import redirect_stdout
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -22,6 +23,12 @@ from radar.github_radar import (
     load_github_radar_config,
 )
 from radar.models import ContentItem
+from radar.on_demand_transcript import (
+    TranscriptRequestError,
+    canonical_youtube_video_url,
+    fetch_native_transcript,
+    write_transcript_artifact,
+)
 from radar.platform_publish import build_platform_payload, publish_platform_payload
 from radar.release_announcement import build_release_card, load_release_manifest
 from radar.official_news import (
@@ -65,6 +72,134 @@ def main() -> int:
     status, text, reason = source_text_status("Subscribe now https://example.com")
     assert status == "unavailable" and not text and reason
     assert reason == "来源未提供足够的可用简介"
+
+    video_id, video_url = canonical_youtube_video_url(
+        "https://youtu.be/dQw4w9WgXcQ?feature=shared"
+    )
+    assert video_id == "dQw4w9WgXcQ"
+    assert video_url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert canonical_youtube_video_url(
+        "https://www.youtube.com/shorts/dQw4w9WgXcQ"
+    ) == (video_id, video_url)
+    for invalid_video_url in (
+        "http://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "https://example.com/watch?v=dQw4w9WgXcQ",
+        "https://www.youtube.com/@example",
+        "https://www.youtube.com/playlist?list=test",
+    ):
+        try:
+            canonical_youtube_video_url(invalid_video_url)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid YouTube URL was accepted")
+
+    transcript_calls: list[tuple[str, dict[str, str]]] = []
+
+    def transcript_requester(
+        url: str, headers: dict[str, str]
+    ) -> tuple[int, dict[str, object]]:
+        transcript_calls.append((url, headers))
+        return 200, {
+            "content": "First caption.\nSecond caption.",
+            "lang": "en",
+            "availableLangs": ["en", "zh-CN"],
+        }
+
+    transcript_result = fetch_native_transcript(
+        video_url, "test-api-key", requester=transcript_requester
+    )
+    assert transcript_result["content"] == "First caption.\nSecond caption."
+    assert transcript_result["video_id"] == video_id
+    request_query = urllib.parse.parse_qs(
+        urllib.parse.urlsplit(transcript_calls[0][0]).query
+    )
+    assert request_query["mode"] == ["native"] and request_query["text"] == ["true"]
+    assert transcript_calls[0][1] == {"x-api-key": "test-api-key"}
+
+    def unavailable_transcript(
+        _url: str, _headers: dict[str, str]
+    ) -> tuple[int, dict[str, object]]:
+        return 206, {"error": "transcript-unavailable"}
+
+    try:
+        fetch_native_transcript(
+            video_url, "test-api-key", requester=unavailable_transcript
+        )
+    except TranscriptRequestError as error:
+        assert error.consumes_quota and "原生字幕" in str(error)
+    else:
+        raise AssertionError("unavailable transcript was accepted")
+
+    async_responses = iter(
+        (
+            (202, {"jobId": "job-test-1"}),
+            (
+                200,
+                {
+                    "status": "completed",
+                    "content": [{"text": "Async caption."}],
+                    "lang": "en",
+                },
+            ),
+        )
+    )
+
+    def async_transcript(
+        _url: str, _headers: dict[str, str]
+    ) -> tuple[int, dict[str, object]]:
+        return next(async_responses)
+
+    async_result = fetch_native_transcript(
+        video_url,
+        "test-api-key",
+        requester=async_transcript,
+        sleeper=lambda _seconds: None,
+    )
+    assert async_result["content"] == "Async caption."
+
+    with tempfile.TemporaryDirectory() as temporary:
+        transcript_storage = Storage(Path(temporary))
+        transcript_storage.initialize()
+        first_request = transcript_storage.reserve_transcript_request(
+            "member-1", "2026-08-12", video_id, is_owner=False
+        )
+        try:
+            transcript_storage.reserve_transcript_request(
+                "member-1", "2026-08-12", video_id, is_owner=False
+            )
+        except ValueError as error:
+            assert "quota" in str(error)
+        else:
+            raise AssertionError("pending request did not reserve the daily quota")
+        transcript_storage.finish_transcript_request(
+            first_request, consumed=False, outcome="upstream_failed"
+        )
+        retry_request = transcript_storage.reserve_transcript_request(
+            "member-1", "2026-08-12", video_id, is_owner=False
+        )
+        transcript_storage.finish_transcript_request(
+            retry_request, consumed=True, outcome="available"
+        )
+        try:
+            transcript_storage.reserve_transcript_request(
+                "member-1", "2026-08-12", video_id, is_owner=False
+            )
+        except ValueError as error:
+            assert "quota" in str(error)
+        else:
+            raise AssertionError("consumed request did not enforce the daily quota")
+        owner_requests = {
+            transcript_storage.reserve_transcript_request(
+                "owner", "2026-08-12", video_id, is_owner=True
+            )
+            for _ in range(2)
+        }
+        assert len(owner_requests) == 2
+        artifact = write_transcript_artifact(
+            Path(temporary), "2026-08-12", retry_request, transcript_result
+        )
+        assert artifact.is_file() and "First caption" in artifact.read_text(encoding="utf-8")
 
     official_sources = load_official_sources(
         Path(__file__).resolve().parents[1] / "references" / "official-news-sources.json"
