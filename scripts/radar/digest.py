@@ -416,9 +416,16 @@ def _item_markdown(item: FrozenItem, index: int | None = None) -> str:
     return "\n".join(lines)
 
 
-def _compact_items_markdown(items: list[FrozenItem]) -> str:
-    return "\n".join(
-        f"{index}. [{_safe_title(item)}]({item.url}) · {_source_label(item)}"
+def _folded_items_markdown(items: list[FrozenItem]) -> str:
+    return "\n\n".join(
+        "\n".join(
+            (
+                f"**{index}. [{_safe_title(item)}]({item.url})**",
+                f"<font color='grey'>{_source_label(item)}</font>",
+                "**来源摘要**",
+                _summary(item.summary),
+            )
+        )
         for index, item in enumerate(items, start=1)
     )
 
@@ -442,7 +449,7 @@ def _collapsible(title: str, items: list[FrozenItem], element_id: str) -> dict:
         "border": {"color": "grey", "corner_radius": "8px"},
         "padding": "8px 10px 8px 10px",
         "elements": [
-            {"tag": "markdown", "content": _compact_items_markdown(items)}
+            {"tag": "markdown", "content": _folded_items_markdown(items)}
         ],
     }
 

@@ -1300,7 +1300,7 @@ def main() -> int:
     assert "原文语言" not in section_text
     assert "事件链" not in section_text
     assert "Official remaining" in section_text
-    assert "Official remaining summary" not in section_text
+    assert "Official remaining summary" in section_text
 
     def element_position(marker: str) -> int:
         for index, element in enumerate(section_elements):
@@ -1353,7 +1353,7 @@ def main() -> int:
     )
     recovered_text = json.dumps(window_cards[1], ensure_ascii=False)
     assert "Recovered official update" in recovered_text
-    assert "Recovered official summary" not in recovered_text
+    assert "Recovered official summary" in recovered_text
     assert "不属于当期 24 小时窗口" in recovered_text
     long_summary = "signal " * 2_200
     split_items = [
