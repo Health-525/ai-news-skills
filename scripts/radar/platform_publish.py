@@ -354,7 +354,7 @@ def _existing_records(
             requester("GET", url, {"Authorization": f"Bearer {token}"}, None),
             "list Bitable records",
         )
-        items = data.get("items", [])
+        items = data.get("items") or []
         if not isinstance(items, list):
             raise RuntimeError("Feishu list Bitable records returned invalid items")
         for item in items:

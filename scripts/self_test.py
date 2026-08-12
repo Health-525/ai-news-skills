@@ -923,6 +923,28 @@ def main() -> int:
                 }
             return {"code": 0, "data": {"records": []}}
 
+        empty_list_received: list[dict[str, object]] = []
+
+        def empty_bitable_requester(
+            method: str,
+            url: str,
+            headers: dict[str, str],
+            request_payload: dict[str, object] | None,
+        ) -> dict[str, object]:
+            empty_list_received.append(
+                {
+                    "method": method,
+                    "url": url,
+                    "headers": headers,
+                    "payload": request_payload,
+                }
+            )
+            if url.endswith("/tenant_access_token/internal"):
+                return {"code": 0, "tenant_access_token": "test-tenant-token"}
+            if method == "GET":
+                return {"code": 0, "data": {"items": None, "has_more": False}}
+            return {"code": 0, "data": {"records": []}}
+
         receipt_path = Path(temporary) / "platform-receipt.json"
         published = publish_platform_payload(
             platform_payload, receipt_path, requester=bitable_requester
@@ -977,6 +999,16 @@ def main() -> int:
             "app_id": "fallback-app-id",
             "app_secret": "fallback-app-secret",
         }
+        empty_receipt = Path(temporary) / "empty-platform-receipt.json"
+        assert publish_platform_payload(
+            platform_payload, empty_receipt, requester=empty_bitable_requester
+        ) == {
+            "status": "published",
+            "records": 2,
+            "created": 2,
+            "updated": 0,
+        }
+        assert not any("batch_update" in str(call["url"]) for call in empty_list_received)
     for key, original in original_bitable_env.items():
         if original is None:
             os.environ.pop(key, None)
