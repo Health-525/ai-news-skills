@@ -298,7 +298,7 @@ class EvolutionTests(unittest.TestCase):
         self.assertEqual(items[0].audiences, ("security", "engineering"))
         self.assertEqual(items[0].evidence_level, "reviewed_advisory")
 
-    def test_cards_separate_current_and_recovered_with_compact_folds(self) -> None:
+    def test_cards_merge_recovered_into_source_sections_with_compact_marker(self) -> None:
         items = [
             FrozenItem(
                 "current-highlight",
@@ -335,21 +335,19 @@ class EvolutionTests(unittest.TestCase):
 
         cards = build_cards("2026-08-08", items)
 
-        self.assertEqual(len(cards), 2)
-        current_text = json.dumps(cards[0], ensure_ascii=False)
-        recovered_text = json.dumps(cards[1], ensure_ascii=False)
-        self.assertIn("📗 AI 前哨｜", current_text)
-        self.assertIn("Current highlight full summary.", current_text)
-        self.assertIn("Current folded item", current_text)
-        self.assertIn("Current folded summary", current_text)
-        self.assertIn("📙 AI 前哨补录｜", recovered_text)
-        self.assertIn("Recovered folded item", recovered_text)
-        self.assertIn("Recovered summary", recovered_text)
-        self.assertIn("https://example.com/app/app_demo", current_text)
-        self.assertNotIn("https://example.com/app/app_demo", recovered_text)
+        self.assertEqual(len(cards), 1)
+        card_text = json.dumps(cards[0], ensure_ascii=False)
+        self.assertIn("📗 AI 前哨｜", card_text)
+        self.assertIn("Current highlight full summary.", card_text)
+        self.assertIn("Current folded item", card_text)
+        self.assertIn("Current folded summary", card_text)
+        self.assertNotIn("📙 AI 前哨补录｜", card_text)
+        self.assertIn("Recovered folded item", card_text)
+        self.assertIn("Recovered summary", card_text)
+        self.assertIn("<font color='orange'>补录</font>", card_text)
+        self.assertIn("https://example.com/app/app_demo", card_text)
         self.assertIn("查看完整 AI 新闻", cards[0]["body"]["elements"][0]["content"])
         self.assertLess(len(json.dumps(cards[0], ensure_ascii=False).encode("utf-8")), 25_000)
-        self.assertLess(len(json.dumps(cards[1], ensure_ascii=False).encode("utf-8")), 25_000)
 
     def test_quality_gate_and_owner_feedback_feed_trends(self) -> None:
         checks = tuple(SourceCheck(f"source-{index}", "ok" if index < 7 else "error", 0) for index in range(10))

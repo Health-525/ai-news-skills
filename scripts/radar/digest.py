@@ -406,9 +406,12 @@ def _summary(value: str) -> str:
 
 def _item_markdown(item: FrozenItem, index: int | None = None) -> str:
     prefix = f"{index}. " if index is not None else ""
+    source_line = f"<font color='grey'>{_source_label(item)}</font>"
+    if item.recency_status == "recovered":
+        source_line += "　<font color='orange'>补录</font>"
     lines = [
         f"**{prefix}[{_safe_title(item)}]({item.url})**",
-        f"<font color='grey'>{_source_label(item)}</font>",
+        source_line,
         "**来源摘要**",
         _summary(item.summary),
     ]
@@ -422,7 +425,14 @@ def _folded_items_markdown(items: list[FrozenItem]) -> str:
         "\n".join(
             (
                 f"**{index}. [{_safe_title(item)}]({item.url})**",
-                f"<font color='grey'>{_source_label(item)}</font>",
+                (
+                    f"<font color='grey'>{_source_label(item)}</font>"
+                    + (
+                        "　<font color='orange'>补录</font>"
+                        if item.recency_status == "recovered"
+                        else ""
+                    )
+                ),
                 "**来源摘要**",
                 _summary(item.summary),
             )
@@ -467,16 +477,15 @@ def _source_section(
     highlights = [
         item for item in items if item.highlight and item.recency_status == "current"
     ]
-    remaining = [
-        item for item in items if not item.highlight and item.recency_status == "current"
-    ]
     recovered = [item for item in items if item.recency_status == "recovered"]
-    recovered_only = len(recovered) == len(items)
-    section_status = (
-        f"补录 {len(items)} 条"
-        if recovered_only
-        else f"AI 判断 {len(highlights)} 条重点 · 共 {len(items)} 条"
-    )
+    remaining = [item for item in items if item not in highlights]
+    current_count = len(items) - len(recovered)
+    if current_count:
+        section_status = f"AI 判断 {len(highlights)} 条重点 · 共 {len(items)} 条"
+        if recovered:
+            section_status += f" · 补录 {len(recovered)}"
+    else:
+        section_status = f"共 {len(items)} 条 · 补录 {len(recovered)}"
     elements: list[dict] = [
         {
             "tag": "markdown",
@@ -497,14 +506,6 @@ def _source_section(
                 f"其余 {len(remaining)} 条 {remaining_label}",
                 remaining,
                 element_id,
-            )
-        )
-    if recovered:
-        elements.append(
-            _collapsible(
-                f"补录 {len(recovered)} 条 {remaining_label}",
-                recovered,
-                f"{element_id}_recovered",
             )
         )
     return elements
@@ -552,9 +553,8 @@ def build_card(
     current_count = sum(item.recency_status == "current" for item in items)
     recovered_count = len(items) - current_count
     recovered_only = recovered_count == len(items)
-    overview_title = "补录" if recovered_only else "今日最新"
     overview_note = (
-        "以下为漏报补录，不属于当期 24 小时窗口"
+        "本卡内容均为补录，已在对应条目标记"
         if recovered_only
         else f"模型判断 {len(highlights)} 条重点，其余按需展开"
     )
@@ -570,7 +570,7 @@ def build_card(
         {
             "tag": "markdown",
             "content": (
-                f"**{overview_title} {len(items)} 条信号**　当期 {current_count} · "
+                f"**今日最新 {len(items)} 条信号**　当期 {current_count} · "
                 f"补录 {recovered_count}\n"
                 f"官方 {len(official_news)} · "
                 f"YouTube {len(youtube)} · "
@@ -670,7 +670,6 @@ def build_card(
         }
     )
     display_date = f"{parsed_date.year}年{parsed_date.month}月{parsed_date.day}日"
-    header_title = "📙 AI 前哨补录" if recovered_only else "📗 AI 前哨"
     return {
         "schema": "2.0",
         "config": {
@@ -687,7 +686,7 @@ def build_card(
         },
         "header": {
             "template": "orange",
-            "title": {"tag": "plain_text", "content": f"{header_title}｜{display_date}"},
+            "title": {"tag": "plain_text", "content": f"📗 AI 前哨｜{display_date}"},
         },
         "body": {
             "direction": "vertical",
@@ -703,7 +702,11 @@ def build_cards(date_str: str, items: list[FrozenItem]) -> list[dict]:
         raise ValueError("cannot build a card without items")
     ordered_items = sorted(
         enumerate(items),
-        key=lambda pair: (SOURCE_ORDER.get(pair[1].source_type, len(SOURCE_ORDER)), pair[0]),
+        key=lambda pair: (
+            SOURCE_ORDER.get(pair[1].source_type, len(SOURCE_ORDER)),
+            pair[1].recency_status == "recovered",
+            pair[0],
+        ),
     )
     ordered = [item for _, item in ordered_items]
 
@@ -754,14 +757,7 @@ def build_cards(date_str: str, items: list[FrozenItem]) -> list[dict]:
             packed.append(card)
         return packed
 
-    current_items = [item for item in ordered if item.recency_status == "current"]
-    recovered_items = [item for item in ordered if item.recency_status == "recovered"]
-    current_cards = pack(current_items, include_report_link=True)
-    recovered_cards = pack(
-        recovered_items,
-        include_report_link=not current_cards,
-    )
-    cards = [*current_cards, *recovered_cards]
+    cards = pack(ordered, include_report_link=True)
     if not cards:
         raise ValueError("cannot build a card without items")
     return cards

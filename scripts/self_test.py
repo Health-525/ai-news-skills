@@ -200,7 +200,12 @@ def main() -> int:
     official_sources = load_official_sources(
         Path(__file__).resolve().parents[1] / "references" / "official-news-sources.json"
     )
-    assert len(official_sources) == 49
+    assert len(official_sources) == 50
+    deepseek_news = next(
+        source for source in official_sources if source["name"] == "DeepSeek 官方新闻"
+    )
+    assert deepseek_news["kind"] == "html_index"
+    assert deepseek_news["article_path_prefix"] == "/news/"
     github_config = load_github_radar_config(
         Path(__file__).resolve().parents[1] / "references" / "github-radar.json"
     )
@@ -926,13 +931,13 @@ def main() -> int:
 """
     items = validate_frozen_digest(source, markdown)
     cards = build_cards("2026-07-20", items)
-    assert len(items) == 2 and len(cards) == 2
+    assert len(items) == 2 and len(cards) == 1
     report_link = cards[0]["body"]["elements"][0]["content"]
-    current_intro = cards[0]["body"]["elements"][1]["content"]
-    recovered_intro = cards[1]["body"]["elements"][0]["content"]
+    intro = cards[0]["body"]["elements"][1]["content"]
+    card_text = json.dumps(cards[0], ensure_ascii=False)
     assert "查看完整 AI 新闻" in report_link and "example.com/app/" in report_link
-    assert "今日最新 1 条信号" in current_intro and "当期 1 · 补录 0" in current_intro
-    assert "补录 1 条信号" in recovered_intro and "当期 0 · 补录 1" in recovered_intro
+    assert "今日最新 2 条信号" in intro and "当期 1 · 补录 1" in intro
+    assert "<font color='orange'>补录</font>" in card_text
 
     platform_source = json.loads(json.dumps(source))
     platform_source["date"] = "2026-07-20"
@@ -1708,16 +1713,13 @@ def main() -> int:
         recency_status="recovered",
     )
     window_cards = build_cards("2026-07-20", [*section_items, recovered_item])
-    assert len(window_cards) == 2
+    assert len(window_cards) == 1
     assert window_cards[0]["header"]["title"]["content"].startswith("📗 AI 前哨｜")
-    assert window_cards[1]["header"]["title"]["content"].startswith("📙 AI 前哨补录｜")
-    assert "Recovered official update" not in json.dumps(
-        window_cards[0], ensure_ascii=False
-    )
-    recovered_text = json.dumps(window_cards[1], ensure_ascii=False)
-    assert "Recovered official update" in recovered_text
-    assert "Recovered official summary" in recovered_text
-    assert "不属于当期 24 小时窗口" in recovered_text
+    window_text = json.dumps(window_cards[0], ensure_ascii=False)
+    assert "Recovered official update" in window_text
+    assert "Recovered official summary" in window_text
+    assert "<font color='orange'>补录</font>" in window_text
+    assert "📙 AI 前哨补录" not in window_text
     long_summary = "signal " * 2_200
     split_items = [
         FrozenItem(

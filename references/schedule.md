@@ -14,8 +14,8 @@ needed only for evidence-bounded Chinese summaries and highlight selection.
    has no available current record. Start from `recommended_highlight`, keep one primary leader per event,
    and apply the company relevance and marginal-value diversity rules in `editorial-policy.md`.
    Do not select weak evidence merely to fill a section. Corroborating records normally remain
-   folded unless they add distinct decision-relevant information. Label `recovered` records as
-   catch-up coverage and do not present them as current-window updates.
+   folded unless they add distinct decision-relevant information. Keep `recovered` records in their
+   original source section, label each as catch-up coverage, and do not present them as current-window updates.
 5. Run `card DATE` and correct validation failures.
 6. Run `scheduled-group DATE`. This validates the frozen cards and sends them only to the externally
    configured group when automatic group delivery is explicitly enabled.

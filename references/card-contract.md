@@ -18,17 +18,17 @@ The maintained Feishu card displays:
 - model-selected highlights expanded first inside each source section;
 - every current source section with available evidence shows at least one highlight; recovered-only
   sections display a catch-up count instead of the misleading label `AI 判断 0`;
-- current-window records are rendered before recovered records, which remain in separate catch-up
-  cards; highlights stay expanded while every folded record keeps its title-link, source, and full
-  source-bounded summary;
+- recovered records stay in their original source section after current-window records and carry a
+  compact `补录` marker instead of being moved to separate catch-up cards; highlights stay expanded
+  while every folded record keeps its title-link, source, and full source-bounded summary;
 - `来源摘要` and an optional source-provided recommendation;
 - item bodies show only title, source, source-bounded summary, and an optional recommendation;
   deterministic ranking and evidence metadata remain in the private source artifact rather than
   being exposed in the daily reading surface;
 - the orange AI 前哨 header.
 
-The renderer keeps current and recovered windows separate and splits either window whenever its
-complete summary representation exceeds the safe card limit; it never truncates records. Delivery
+The renderer keeps current and recovered records together by source section and splits the ordered
+digest only when its complete summary representation exceeds the safe card limit; it never truncates records. Delivery
 hashes the rendered cards and target, then writes a private receipt. A retry with
 the same target and card hash returns `skipped`; a mismatched receipt fails closed.
 

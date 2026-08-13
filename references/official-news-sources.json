@@ -102,6 +102,14 @@
     "allowed_hosts": ["api-docs.deepseek.com"]
   },
   {
+    "name": "DeepSeek 官方新闻",
+    "kind": "html_index",
+    "index_url": "https://api-docs.deepseek.com/news/news260424/",
+    "article_path_prefix": "/news/",
+    "allowed_hosts": ["api-docs.deepseek.com"],
+    "max_candidates": 20
+  },
+  {
     "name": "Qwen",
     "kind": "qwen_api",
     "url": "https://qwen.ai/api/v2/article/retrieval?type=qwen_ai&language=zh-CN",
