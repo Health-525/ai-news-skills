@@ -20,6 +20,7 @@ from radar.delivery import _parse_bridge_payload, send_group_cards, send_persona
 from radar.digest import FrozenItem, build_card, build_cards, validate_frozen_digest
 from radar.github_radar import (
     fetch_github_trending,
+    GitHubRateLimitError,
     load_github_radar_config,
 )
 from radar.models import ContentItem
@@ -1455,7 +1456,25 @@ def main() -> int:
         assert "stars today" not in github_items[0].raw_source_text
         assert "Fork" not in github_items[0].raw_source_text
         assert "2026-" not in github_items[0].raw_source_text
-        assert github_items[0].dedup_identity.endswith("#trend-date=2026-08-05")
+        assert github_items[0].dedup_identity == "https://github.com/example/agent-runtime"
+        github_storage.add_new_items_to_digest("2026-08-05", github_items)
+
+        def repeated_repository_fetcher(_url: str, _storage: Storage) -> dict[str, object]:
+            raise AssertionError("previously reported repository fetched again")
+
+        def repeated_page_fetcher(_url: str, _storage: Storage) -> dict[str, object]:
+            first_article = github_html.split(b"</article>", 1)[0] + b"</article>"
+            return {"body": first_article, "cache_mode": "fresh"}
+
+        repeated_items, repeated_health = fetch_github_trending(
+            test_github_config,
+            github_storage,
+            github_now + timedelta(days=1),
+            repeated_page_fetcher,
+            repeated_repository_fetcher,
+        )
+        assert not repeated_items and repeated_health.status == "ok"
+        assert "1 previously reported" in repeated_health.detail
 
     def unavailable_metadata(_url: str, _storage: Storage) -> dict[str, object]:
         raise OSError("repository metadata unavailable")
@@ -1473,6 +1492,27 @@ def main() -> int:
         assert len(github_items) == 1 and github_health.status == "warn"
         assert "950 total Stars" in github_items[0].raw_source_text
         assert github_health.failed == 2
+
+    rate_limit_calls = 0
+
+    def rate_limited_metadata(_url: str, _storage: Storage) -> dict[str, object]:
+        nonlocal rate_limit_calls
+        rate_limit_calls += 1
+        raise GitHubRateLimitError("rate limited")
+
+    with tempfile.TemporaryDirectory() as temporary:
+        github_storage = Storage(Path(temporary))
+        github_storage.initialize()
+        github_items, github_health = fetch_github_trending(
+            test_github_config,
+            github_storage,
+            github_now,
+            github_page_fetcher,
+            rate_limited_metadata,
+        )
+        assert rate_limit_calls == 1
+        assert len(github_items) == 1 and github_health.status == "warn"
+        assert "rate_limited=true" in github_health.checks[1].detail
 
     def invalid_github_page(_url: str, _storage: Storage) -> dict[str, object]:
         return {"body": b"<html></html>", "cache_mode": "fresh"}

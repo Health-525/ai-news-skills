@@ -248,6 +248,19 @@ class Storage:
                 ),
             )
 
+    def has_seen_github_repository(self, url: str) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1
+                FROM items
+                WHERE source_type = 'github_trending' AND url = ?
+                LIMIT 1
+                """,
+                (url,),
+            ).fetchone()
+        return row is not None
+
     def add_new_items_to_digest(self, date_str: str, items: list[ContentItem]) -> None:
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as connection:

@@ -28,6 +28,10 @@ REPOSITORY_CACHE_FALLBACK_HOURS = 36
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 
+class GitHubRateLimitError(RuntimeError):
+    """Stop repository API calls after GitHub signals a rate limit."""
+
+
 class GitHubRadarConfig(TypedDict):
     period: str
     max_candidates: int
@@ -209,6 +213,8 @@ def _fetch_github_json(url: str, storage: Storage) -> GitHubFetchResult:
         ):
             payload = json.loads(_cache_body(cache).decode("utf-8"))
             return {"payload": payload, "cache_mode": "stale_fallback"}
+        if error.code in {403, 429}:
+            raise GitHubRateLimitError("GitHub repository API rate limited") from error
         raise
     except (OSError, TimeoutError, urllib.error.URLError):
         if cache and age is not None and age <= timedelta(hours=REPOSITORY_CACHE_FALLBACK_HOURS):
@@ -383,20 +389,39 @@ def fetch_github_trending(
     candidates = records[: config["max_candidates"]]
     accepted: list[ContentItem] = []
     metadata_failures = 0
+    metadata_successes = 0
+    inspected = 0
+    already_seen = 0
+    metadata_enabled = True
+    rate_limited = False
     cached = int(page_result["cache_mode"] != "fresh")
     stale = int(page_result["cache_mode"] == "stale_fallback")
     for record in candidates:
+        inspected += 1
         full_name = str(record["full_name"])
         candidate = dict(record)
-        try:
-            repository_url = GITHUB_REPOSITORY_API.format(
-                repository=urllib.parse.quote(full_name, safe="/")
-            )
-            repository_result = repository_fetcher(repository_url, storage)
-            candidate.update(_metadata(repository_result["payload"]))
-            cached += int(repository_result["cache_mode"] != "fresh")
-            stale += int(repository_result["cache_mode"] == "stale_fallback")
-        except Exception:
+        if storage.has_seen_github_repository(str(candidate["url"])):
+            already_seen += 1
+            continue
+        if metadata_enabled:
+            try:
+                repository_url = GITHUB_REPOSITORY_API.format(
+                    repository=urllib.parse.quote(full_name, safe="/")
+                )
+                repository_result = repository_fetcher(repository_url, storage)
+                candidate.update(_metadata(repository_result["payload"]))
+                metadata_successes += 1
+                cached += int(repository_result["cache_mode"] != "fresh")
+                stale += int(repository_result["cache_mode"] == "stale_fallback")
+            except GitHubRateLimitError:
+                metadata_failures += 1
+                metadata_enabled = False
+                rate_limited = True
+                candidate.setdefault("topics", [])
+            except Exception:
+                metadata_failures += 1
+                candidate.setdefault("topics", [])
+        else:
             metadata_failures += 1
             candidate.setdefault("topics", [])
         if candidate.get("archived") or candidate.get("fork"):
@@ -428,7 +453,11 @@ def fetch_github_trending(
             break
 
     page_mode = page_result["cache_mode"]
-    status = "warn" if metadata_failures or stale or page_mode == "stale_fallback" else "ok"
+    status = (
+        "warn"
+        if metadata_failures or stale or page_mode == "stale_fallback"
+        else "ok"
+    )
     checks = (
         SourceCheck(
             "trending-page",
@@ -440,16 +469,22 @@ def fetch_github_trending(
         SourceCheck(
             "repository-metadata",
             "warn" if metadata_failures or stale else "ok",
-            len(candidates) - metadata_failures,
+            metadata_successes,
             cached - int(page_mode != "fresh"),
-            f"{metadata_failures} failures; {stale} stale fallbacks",
+            (
+                f"{metadata_failures} failures; {stale} stale fallbacks; "
+                f"{already_seen} previously reported; rate_limited={str(rate_limited).lower()}"
+            ),
         ),
     )
     detail = (
-        f"{len(records)} daily Trending repositories; {len(candidates)} inspected; "
-        f"{len(accepted)} AI projects; {metadata_failures} metadata failures"
+        f"{len(records)} daily Trending repositories; {inspected} inspected; "
+        f"{len(accepted)} new AI projects; {already_seen} previously reported; "
+        f"{metadata_failures} metadata failures"
     )
     return accepted, SourceHealth(
-        "github_trending", status, 1 + len(candidates) - metadata_failures,
+        "github_trending",
+        status,
+        1 + metadata_successes,
         metadata_failures, cached, detail, checks,
     )

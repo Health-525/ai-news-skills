@@ -55,7 +55,11 @@
   topic-and-keyword gate retains AI projects and excludes unrelated Trending repositories. Reader
   evidence contains the project description and current total Star count; daily Star growth, Forks,
   repository dates, language, license, and topics are not summarized. Popularity is not treated as
-  an endorsement or security review. The collector does not fall back to repository Search, fetch
+  an endorsement or security review. A repository is emitted only on its first observed qualifying
+  Trending appearance, so repeated daily placement does not create duplicate news. Previously
+  reported repositories are skipped before metadata enrichment. After a GitHub `403` or `429`, the
+  collector stops further repository API requests for that run and marks the source warning instead
+  of continuing to pressure the rate limit. The collector does not fall back to repository Search, fetch
   README files, source code, issues, or arbitrary repository links. It preserves Trending order,
   uses bounded caches, and exposes stale fallback or metadata failures in `source_health`.
 - Security radar: GitHub-reviewed global advisories returned by the official GitHub Advisory API,
