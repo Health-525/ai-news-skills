@@ -16,6 +16,18 @@ from .models import ContentItem
 
 STORY_SCHEMA_VERSION = 1
 EVENT_WINDOW_HOURS = 72
+STANDARD_HIGHLIGHT_SCORE = 80.0
+CORRECTION_HIGHLIGHT_SCORE = 74.0
+
+HIGHLIGHT_SIGNAL_TYPES = {
+    "security",
+    "regulation",
+    "pricing",
+    "model_release",
+    "api_update",
+    "infrastructure",
+    "open_source",
+}
 
 EVIDENCE_WEIGHT = {
     "first_party": 1.0,
@@ -445,6 +457,32 @@ def _alert_level(record: dict[str, object], age_hours: float) -> str:
     return "normal"
 
 
+def _recommended_highlight(record: dict[str, object]) -> bool:
+    """Apply the absolute quality gate before editorial diversity selection."""
+    if (
+        record.get("source_text_status") != "available"
+        or record.get("recency_status", "current") != "current"
+        or record.get("story_role") != "primary"
+        or record.get("verification_status") == "low_evidence"
+        or _specificity_adjustment(record) <= -10
+    ):
+        return False
+
+    alert_level = str(record.get("alert_level", "normal"))
+    if alert_level in {"critical", "breaking"}:
+        return True
+
+    score = float(record.get("rank_score", 0))
+    change_type = str(record.get("change_type", "report"))
+    if change_type in {"correction", "deprecation"}:
+        return score >= CORRECTION_HIGHLIGHT_SCORE
+
+    return (
+        score >= STANDARD_HIGHLIGHT_SCORE
+        and str(record.get("signal_type", "general")) in HIGHLIGHT_SIGNAL_TYPES
+    )
+
+
 def _story_id(cluster: dict[str, object]) -> str:
     members = cluster["members"]
     first = min(members, key=lambda value: (_utc(str(value["published_at"])), str(value["id"])))
@@ -557,17 +595,7 @@ def enrich_and_rank_records(
         record["rank_score"] = round(max(0.0, min(100.0, sum(components.values()))), 2)
         record["rank_reason"] = _rank_reason(record, age_hours, personalization)
         record["alert_level"] = _alert_level(record, age_hours)
-        record["recommended_highlight"] = (
-            record.get("source_text_status") == "available"
-            and record.get("story_role") == "primary"
-            and (
-                record["alert_level"] in {"critical", "breaking"}
-                or (
-                    record.get("change_type") in {"correction", "deprecation"}
-                    and float(record["rank_score"]) >= 74
-                )
-            )
-        )
+        record["recommended_highlight"] = _recommended_highlight(record)
         record.pop("_story_tokens", None)
 
     ordered = sorted(

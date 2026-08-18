@@ -9,6 +9,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 MAX_CARD_BYTES = 25_000
+MAX_DAILY_HIGHLIGHTS = 6
 DAILY_REPORT_URL = "https://example.com/app/app_demo"
 SOURCE_ORDER = {
     "official_news": 0,
@@ -288,8 +289,8 @@ def validate_frozen_digest(source_payload: dict, markdown: str) -> list[FrozenIt
         raise ValueError(f"frozen digest source mismatch: missing={missing}, invented={invented}")
 
     frozen: list[FrozenItem] = []
-    eligible_current_sources: set[str] = set()
-    highlighted_current_sources: set[str] = set()
+    highlighted_events: set[str] = set()
+    highlight_count = 0
     for item in parsed:
         record = by_url[item["url"]]
         required = ("source", "highlight", "summary")
@@ -320,10 +321,26 @@ def validate_frozen_digest(source_payload: dict, markdown: str) -> list[FrozenIt
         if recency_status not in {"current", "recovered"}:
             raise ValueError("source record has an unknown recency_status")
         source_type = str(record.get("source_type", ""))
-        if recency_status == "current" and status == "available":
-            eligible_current_sources.add(source_type)
-        if recency_status == "current" and item["highlight"] == "是":
-            highlighted_current_sources.add(source_type)
+        if item["highlight"] == "是":
+            if recency_status != "current":
+                raise ValueError("recovered source cannot be a highlight")
+            if record.get("verification_status") == "low_evidence":
+                raise ValueError("low-evidence source cannot be a highlight")
+            if (
+                "recommended_highlight" in record
+                and not record.get("recommended_highlight")
+            ):
+                raise ValueError("highlight must pass the deterministic quality gate")
+            event_id = str(record.get("event_id", "")).strip()
+            if event_id and event_id in highlighted_events:
+                raise ValueError("only one highlight is allowed per event")
+            if event_id:
+                highlighted_events.add(event_id)
+            highlight_count += 1
+            if highlight_count > MAX_DAILY_HIGHLIGHTS:
+                raise ValueError(
+                    f"daily highlights cannot exceed {MAX_DAILY_HIGHLIGHTS}"
+                )
 
         recommendation = item.get("recommendation", "").strip()
         source_recommendation = str(record.get("recommendation", "")).strip()
@@ -370,15 +387,6 @@ def validate_frozen_digest(source_payload: dict, markdown: str) -> list[FrozenIt
                 alert_level=str(record.get("alert_level", "normal")),
                 change_type=str(record.get("change_type", "report")),
             )
-        )
-    missing_highlights = sorted(
-        eligible_current_sources - highlighted_current_sources,
-        key=lambda source_type: SOURCE_ORDER.get(source_type, len(SOURCE_ORDER)),
-    )
-    if missing_highlights:
-        raise ValueError(
-            "every populated current source section requires at least one highlight: "
-            + ", ".join(missing_highlights)
         )
     return frozen
 

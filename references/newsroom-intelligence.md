@@ -96,9 +96,14 @@ N occupancy changes. Publishing still follows the scheduled-delivery or owner-ap
 
 ## Highlight policy
 
-Prefer records with `recommended_highlight=true`. Keep the primary event leader expanded and fold
-corroborating copies into their source section. Highlight an `update` only when its bounded source
-text adds a material version, date, affected range, price, availability, or correction.
+The deterministic `recommended_highlight` quality gate requires current, available, primary-event
+evidence. It admits critical/breaking records, corrections or deprecations above their threshold,
+and company-relevant signal types scoring at least 80. Low-evidence, opaque, generic, recovered, and
+corroborating records do not pass.
+
+Choose zero through six highlights globally from eligible records. Use `rank_position` for relevance
+and marginal-value diversity for event, publisher, entity, and topic overlap. Keep at most one leader
+per event, do not guarantee representation for any source section, and do not pad a quiet day.
 
 Prioritize `correction` and `deprecation` records because they can invalidate earlier operational
 assumptions. Never call a later record a correction unless its own bounded text uses correction or

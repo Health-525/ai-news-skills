@@ -1179,15 +1179,11 @@ def main() -> int:
 - 来源摘要：该公司在 18 个月后融资 2000 万美元。
 """
     validate_frozen_digest(numeric_source, numeric_markdown)
-    try:
-        validate_frozen_digest(
-            numeric_source,
-            numeric_markdown.replace("- 重点：是", "- 重点：否"),
-        )
-    except ValueError as error:
-        assert "requires at least one highlight" in str(error)
-    else:
-        raise AssertionError("a populated current section accepted zero highlights")
+    zero_highlight_items = validate_frozen_digest(
+        numeric_source,
+        numeric_markdown.replace("- 重点：是", "- 重点：否"),
+    )
+    assert not any(item.highlight for item in zero_highlight_items)
 
     unavailable_current_source = {"items": [dict(source["items"][1])]}
     unavailable_current_source["items"][0]["recency_status"] = "current"

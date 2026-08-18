@@ -8,12 +8,11 @@ needed only for evidence-bounded Chinese summaries and highlight selection.
 1. Run `doctor`; stop when any check is `error`.
 2. Run `prepare DATE`; stop on `failed` and report sanitized source health.
 3. Read only the dated source JSON. Do not browse or use prior knowledge.
-4. Write every record to frozen Markdown in `rank_position` order. Keep unavailable records exact
-   and choose highlights without a fixed maximum or source quota. Give every source section with at
-   least one available current record at least one highlight; zero is allowed only when that section
-   has no available current record. Start from `recommended_highlight`, keep one primary leader per event,
-   and apply the company relevance and marginal-value diversity rules in `editorial-policy.md`.
-   Do not select weak evidence merely to fill a section. Corroborating records normally remain
+4. Write every record to frozen Markdown in `rank_position` order. Keep unavailable records exact.
+   Choose zero through six highlights globally from records with `recommended_highlight=true`, keep
+   one primary leader per event, and apply the company relevance and marginal-value diversity rules
+   in `editorial-policy.md`. Do not enforce source-section coverage and do not select weak evidence
+   to fill a minimum. Corroborating records normally remain
    folded unless they add distinct decision-relevant information. Keep `recovered` records in their
    original source section, label each as catch-up coverage, and do not present them as current-window updates.
 5. Run `card DATE` and correct validation failures.
@@ -38,11 +37,10 @@ their latency or generated artifacts to the isolated daily delivery transaction.
 ```text
 Use $ai-news-skills. Run the complete source-only daily workflow for today's Asia/Shanghai date.
 Stop on doctor errors. Summarize only available source_text, keep unavailable records exact,
-choose company-relevant highlights independently within every populated source section using
-marginal-value diversity without a fixed maximum, require at least one highlight in every section
-that has an available current record, preserve rank_position order, use recommended
-primary event leaders as a strong starting point without letting one source suppress all other
-sections, and never promote weak evidence merely for balance,
+choose zero through six company-relevant highlights globally using only records with
+recommended_highlight=true, apply marginal-value diversity across events, publishers, entities,
+and topics, preserve rank_position order, keep at most one leader per event, do not enforce source
+section coverage, and never promote weak evidence merely for balance,
 label recovered overlap records as catch-up coverage rather than current-window news,
 validate the native cards, and call scheduled-group for the configured group. Treat domestic and
 international official releases, stable GitHub releases, and API changelogs as

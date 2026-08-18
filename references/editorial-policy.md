@@ -56,36 +56,33 @@ adoption, infrastructure changes, pricing, security, and concrete business impac
 education, generic commentary, speculative reactions, unrelated creator content, and minor patch
 noise.
 
-A high score alone is not a reason to highlight. Normally expand only records with
-`recommended_highlight=true`; override that recommendation only when the bounded source text shows
-a concrete decision, operational, security, pricing, availability, or customer-impact consequence
-that is absent from the already selected leaders. Stop selecting when the next record adds no new
-decision-relevant information. Routine case studies, generic reports, minor releases, and recovered
-items remain folded even when their source authority is high.
+A high score alone is not a reason to highlight. Select only records with
+`recommended_highlight=true`; this deterministic quality gate requires a current, available,
+primary event with sufficient evidence and either a critical/breaking alert or a score of at least
+80 for a company-relevant signal. Stop selecting when the next record adds no new decision-relevant
+information. Routine case studies, generic reports, minor releases, low-evidence records, and
+recovered items remain folded even when their source authority is high.
 
-Evaluate each populated source section independently. Every section with at least one available
-current record must have at least one highlight; zero is allowed only when the section has no
-available current record. This is a minimum coverage gate, not a maximum or fixed source mix.
-A burst of highly ranked official or security records must not suppress a distinct company-relevant
-YouTube, AIHOT, GitHub, industry, model Hub, or Builders X record. Never highlight an unavailable
-record; choose the strongest available current record when a section contains only weak candidates.
+Choose highlights globally across the complete digest, not independently by source section. A day
+may contain zero through six highlights; zero is correct when no record passes the absolute quality
+gate, and the list must never be padded to reach a minimum. Source-section coverage affects folded
+display order only and must not grant highlight eligibility. Never highlight an unavailable or
+recovered record.
 
 Prioritize a reviewed high/critical advisory when it affects a widely used allowlisted dependency
 and provides a concrete remediation. Promote a new model-Hub record only when its metadata provides
 a distinct strategic signal; a repository appearing on an allowlist is not sufficient by itself.
 
-Apply marginal-value diversity rather than a fixed quota. When one channel publishes a burst, each
-additional highlight from that channel must add a distinct decision-relevant signal. When several
-records share an `event_id`, normally highlight only the `primary` leader and keep `corroborating`
-records folded. Highlight an `update` only when its own bounded source text adds independent
-material information. Direct official evidence normally
+Apply marginal-value diversity rather than a source quota. Select candidates in `rank_position`
+order and penalize overlap with already selected events, publishers, entities, and topics. Each
+additional highlight must add a distinct decision-relevant signal. When several records share an
+`event_id`, highlight only one leader and keep the rest folded. Direct official evidence normally
 outranks editorial synthesis and creator commentary, but weak or unavailable evidence must never be
 promoted merely for source balance. Mark every record with `重点：是` or `重点：否`; non-highlights
 remain available in the folded source sections.
 
-Treat `recovered` records as catch-up coverage rather than current-window freshness. Normally keep
-them folded; highlight one only when it represents a material product, pricing, security, or
-availability change that the digest did not previously deliver.
+Treat `recovered` records as catch-up coverage rather than current-window freshness and always keep
+them folded.
 
 Claims about attacks, attribution, leaked or unreleased models, financing, regulation, legal action,
 or customer impact require stronger handling when they come from AIHOT, GitHub radar, industry digests, YouTube,

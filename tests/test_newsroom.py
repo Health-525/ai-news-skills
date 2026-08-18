@@ -80,6 +80,34 @@ class NewsroomTests(unittest.TestCase):
         self.assertEqual(
             by_id["version"]["rank_components"]["specificity_adjustment"], -15.0
         )
+        self.assertFalse(by_id["version"]["recommended_highlight"])
+
+    def test_quality_gate_recommends_material_primary_event(self) -> None:
+        record = enrich_and_rank_records([self._record("release")], self.now)[0]
+        self.assertGreaterEqual(record["rank_score"], 80)
+        self.assertTrue(record["recommended_highlight"])
+
+    def test_quality_gate_allows_quiet_day_without_highlights(self) -> None:
+        record = enrich_and_rank_records(
+            [
+                self._record(
+                    "commentary",
+                    title="A general perspective on AI",
+                    source_type="builders_x",
+                    source="Builders X · Example",
+                    evidence_level="social_post",
+                    signal_type="general",
+                )
+            ],
+            self.now,
+        )[0]
+        self.assertFalse(record["recommended_highlight"])
+
+    def test_quality_gate_keeps_recovered_event_folded(self) -> None:
+        record = enrich_and_rank_records(
+            [self._record("recovered", recency_status="recovered")], self.now
+        )[0]
+        self.assertFalse(record["recommended_highlight"])
 
     def test_shared_vendor_product_does_not_merge_distinct_cases(self) -> None:
         first = self._record(

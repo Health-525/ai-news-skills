@@ -16,8 +16,9 @@ The maintained Feishu card displays:
 - records are packed by stable source order, preserving each source section instead of allowing a
   global editorial score to move a later section ahead of an earlier one;
 - model-selected highlights expanded first inside each source section;
-- every current source section with available evidence shows at least one highlight; recovered-only
-  sections display a catch-up count instead of the misleading label `AI 判断 0`;
+- highlights are selected globally with a zero-to-six daily limit; source sections without a
+  qualifying highlight remain complete and folded instead of receiving a filler highlight;
+- recovered-only sections display a catch-up count instead of the misleading label `AI 判断 0`;
 - recovered records stay in their original source section after current-window records and carry a
   compact `补录` marker instead of being moved to separate catch-up cards; highlights stay expanded
   while every folded record keeps its title-link, source, and full source-bounded summary;

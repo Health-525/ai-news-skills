@@ -17,12 +17,11 @@ print target identifiers or private runtime values.
 4. Read only the returned `source_file`. Follow
    [references/editorial-policy.md](references/editorial-policy.md) and
    [references/newsroom-intelligence.md](references/newsroom-intelligence.md), then write every
-   record to the returned `digest_file` in `rank_position` order. Evaluate highlights within every
-   populated source section so a globally dominant source cannot suppress a distinct, useful item
-   from another section. Every source section with at least one available current record must have
-   at least one highlight; zero is allowed only when the section has no available current record.
-   This minimum is not a maximum or fixed mix. Use `recommended_highlight=true` as a strong signal;
-   do not highlight unavailable records or corroborating copies unless they contain a material update.
+   record to the returned `digest_file` in `rank_position` order. Choose zero through six highlights
+   globally from records with `recommended_highlight=true`. Apply marginal-value diversity across
+   events, publishers, entities, and topics; keep at most one leader per event. Do not enforce source
+   section coverage or pad a quiet day. Never highlight unavailable, recovered, low-evidence, or
+   corroborating records.
    For GitHub radar, introduce what the project is and what it is for, then include its current total
    Star count. Omit daily growth, Forks, and repository dates from the reader summary.
 5. Run `python {baseDir}/scripts/daily_pipeline.py card YYYY-MM-DD`; fix the Markdown until valid.
