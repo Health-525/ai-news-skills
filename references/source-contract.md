@@ -190,6 +190,9 @@ Optional environment variables:
   default `0.65`.
 - `AI_NEWS_REQUIRED_OFFICIAL_SOURCES`: optional comma-separated official source names that must be
   healthy before publication.
+- `AI_NEWS_DAILY_REPORT_URL`: optional HTTPS link to the deployment's own full-report surface, shown
+  on the first daily card. It identifies a private tenant, so it must live in the runtime environment
+  and never in the repository. Leave it unset to omit the link.
 - `AI_NEWS_FEISHU_PERSONAL_TARGET`: private owner preview target.
 - `AI_NEWS_FEISHU_GROUP_TARGET`: configured group target.
 - `AI_NEWS_AUTO_GROUP_DELIVERY`: explicit opt-in for approval-free scheduled group delivery;

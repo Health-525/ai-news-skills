@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
 
-from .digest import build_cards, validate_frozen_digest
+from .digest import build_cards, daily_report_url, validate_frozen_digest
 from .github_radar import load_github_radar_config
 from .huggingface_radar import HUGGINGFACE_MODELS_API, load_huggingface_radar_config
 from .intelligence import classify_item, verify_source_payload
@@ -39,6 +39,7 @@ from .trends import build_trend_report
 
 RUNTIME_ENV_KEYS = {
     "AI_NEWS_AUTO_GROUP_DELIVERY",
+    "AI_NEWS_DAILY_REPORT_URL",
     "AI_NEWS_FEISHU_PERSONAL_TARGET",
     "AI_NEWS_FEISHU_GROUP_TARGET",
     "AI_NEWS_INDUSTRY_DIGEST_SOURCES_FILE",
@@ -58,6 +59,7 @@ RUNTIME_ENV_KEYS = {
     "AI_NEWS_RELEASE_ANNOUNCEMENTS",
     "AI_NEWS_SECURITY_ADVISORIES_FILE",
     "AI_NEWS_SUPADATA_API_KEY",
+    "AI_NEWS_YOUTUBE_CHANNELS_FILE",
     "OPENCLAW_FEISHU_ACCOUNT_ID",
 }
 PRIMARY_WINDOW_HOURS = 24
@@ -268,6 +270,18 @@ def doctor(*, live: bool = False) -> dict[str, object]:
         if os.environ.get("AI_NEWS_SUPADATA_API_KEY", "").strip()
         else "optional transcript service disabled",
     )
+    try:
+        report_link_configured = daily_report_url() is not None
+    except ValueError as error:
+        add("daily-report-link", "error", str(error))
+    else:
+        add(
+            "daily-report-link",
+            "ok",
+            "configured full-report link"
+            if report_link_configured
+            else "optional full-report link disabled",
+        )
     try:
         security_config = load_security_advisory_config(security_advisories_file())
     except ValueError as error:

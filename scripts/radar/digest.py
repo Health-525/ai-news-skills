@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,7 +11,7 @@ from decimal import Decimal, InvalidOperation
 
 MAX_CARD_BYTES = 25_000
 MAX_DAILY_HIGHLIGHTS = 6
-DAILY_REPORT_URL = "https://example.com/app/app_demo"
+DAILY_REPORT_URL_ENV = "AI_NEWS_DAILY_REPORT_URL"
 SOURCE_ORDER = {
     "official_news": 0,
     "youtube": 1,
@@ -519,11 +520,28 @@ def _source_section(
     return elements
 
 
+def daily_report_url() -> str | None:
+    """Return the deployment-specific full-report link, or None when unconfigured.
+
+    The value is deployment configuration, never a repository literal. An unset value
+    omits the link element; a configured but non-HTTPS value is a misconfiguration and
+    fails loudly instead of rendering an unusable link.
+    """
+    configured = os.environ.get(DAILY_REPORT_URL_ENV, "").strip()
+    if not configured:
+        return None
+    if not configured.startswith("https://") or any(
+        character in configured for character in " \t\n()"
+    ):
+        raise ValueError(f"{DAILY_REPORT_URL_ENV} must be an HTTPS URL without spaces or parentheses")
+    return configured
+
+
 def build_card(
     date_str: str,
     items: list[FrozenItem],
     *,
-    include_report_link: bool = False,
+    report_url: str | None = None,
 ) -> dict:
     try:
         parsed_date = datetime.strptime(date_str, "%Y-%m-%d")
@@ -567,11 +585,11 @@ def build_card(
         else f"模型判断 {len(highlights)} 条重点，其余按需展开"
     )
     elements: list[dict] = []
-    if include_report_link:
+    if report_url:
         elements.append(
             {
                 "tag": "markdown",
-                "content": f"🔗 **[查看完整 AI 新闻]({DAILY_REPORT_URL})**",
+                "content": f"🔗 **[查看完整 AI 新闻]({report_url})**",
             }
         )
     elements.append(
@@ -721,14 +739,14 @@ def build_cards(date_str: str, items: list[FrozenItem]) -> list[dict]:
     def pack(
         group: list[FrozenItem],
         *,
-        include_report_link: bool,
+        report_url: str | None,
     ) -> list[dict]:
         if not group:
             return []
         grouped_card = build_card(
             date_str,
             group,
-            include_report_link=include_report_link,
+            report_url=report_url,
         )
         if len(json.dumps(grouped_card, ensure_ascii=False).encode("utf-8")) <= MAX_CARD_BYTES:
             return [grouped_card]
@@ -740,7 +758,7 @@ def build_cards(date_str: str, items: list[FrozenItem]) -> list[dict]:
             candidate_card = build_card(
                 date_str,
                 candidate,
-                include_report_link=include_report_link and not packed,
+                report_url=report_url if not packed else None,
             )
             size = len(json.dumps(candidate_card, ensure_ascii=False).encode("utf-8"))
             if current and size > MAX_CARD_BYTES:
@@ -748,7 +766,7 @@ def build_cards(date_str: str, items: list[FrozenItem]) -> list[dict]:
                     build_card(
                         date_str,
                         current,
-                        include_report_link=include_report_link and not packed,
+                        report_url=report_url if not packed else None,
                     )
                 )
                 current = [item]
@@ -758,14 +776,14 @@ def build_cards(date_str: str, items: list[FrozenItem]) -> list[dict]:
             card = build_card(
                 date_str,
                 current,
-                include_report_link=include_report_link and not packed,
+                report_url=report_url if not packed else None,
             )
             if len(json.dumps(card, ensure_ascii=False).encode("utf-8")) > MAX_CARD_BYTES:
                 raise ValueError("one digest item exceeds the Feishu card size limit")
             packed.append(card)
         return packed
 
-    cards = pack(ordered, include_report_link=True)
+    cards = pack(ordered, report_url=daily_report_url())
     if not cards:
         raise ValueError("cannot build a card without items")
     return cards

@@ -333,7 +333,9 @@ class EvolutionTests(unittest.TestCase):
             ),
         ]
 
-        cards = build_cards("2026-08-08", items)
+        report_url = "https://example.com/app/app_demo"
+        with mock.patch.dict(os.environ, {"AI_NEWS_DAILY_REPORT_URL": report_url}):
+            cards = build_cards("2026-08-08", items)
 
         self.assertEqual(len(cards), 1)
         card_text = json.dumps(cards[0], ensure_ascii=False)
@@ -345,9 +347,72 @@ class EvolutionTests(unittest.TestCase):
         self.assertIn("Recovered folded item", card_text)
         self.assertIn("Recovered summary", card_text)
         self.assertIn("<font color='orange'>补录</font>", card_text)
-        self.assertIn("https://example.com/app/app_demo", card_text)
+        self.assertIn(report_url, card_text)
         self.assertIn("查看完整 AI 新闻", cards[0]["body"]["elements"][0]["content"])
         self.assertLess(len(json.dumps(cards[0], ensure_ascii=False).encode("utf-8")), 25_000)
+
+    def test_full_report_link_is_deployment_configuration(self) -> None:
+        items = [
+            FrozenItem(
+                "official-1",
+                "official_news",
+                "官方发布 · Example",
+                "Example release",
+                "https://example.com/release",
+                "Example summary for the deployment-configuration boundary test.",
+                "",
+                True,
+            )
+        ]
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AI_NEWS_DAILY_REPORT_URL", None)
+            unlinked = build_cards("2026-08-08", items)
+        self.assertNotIn("查看完整 AI 新闻", json.dumps(unlinked, ensure_ascii=False))
+        self.assertTrue(
+            unlinked[0]["body"]["elements"][0]["content"].startswith("**今日最新")
+        )
+
+        with mock.patch.dict(
+            os.environ, {"AI_NEWS_DAILY_REPORT_URL": "https://example.com/app/app_demo"}
+        ):
+            linked = build_cards("2026-08-08", items)
+        self.assertIn(
+            "查看完整 AI 新闻", linked[0]["body"]["elements"][0]["content"]
+        )
+
+        for invalid in (
+            "http://example.com/app/app_demo",
+            "example.com/app/app_demo",
+            "https://example.com/app (demo)",
+        ):
+            with mock.patch.dict(os.environ, {"AI_NEWS_DAILY_REPORT_URL": invalid}):
+                with self.assertRaises(ValueError):
+                    build_cards("2026-08-08", items)
+
+    def test_shipped_tree_carries_no_deployment_identifiers(self) -> None:
+        # Assembled from fragments so this guard never embeds the identifiers it forbids.
+        forbidden = ("feishu" + "app.com", "chee" + "th-mobile")
+        suffixes = {".py", ".md", ".json", ".yaml", ".yml", ".mjs"}
+        roots = [ROOT / "scripts", ROOT / "references", ROOT / "tests", ROOT / "agents"]
+        shipped = [path for path in (ROOT / "SKILL.md", ROOT / "README.md") if path.is_file()]
+        for root in roots:
+            shipped.extend(
+                path
+                for path in root.rglob("*")
+                if path.is_file()
+                and path.suffix in suffixes
+                and "__pycache__" not in path.parts
+            )
+        self.assertGreater(len(shipped), 20)
+        for path in shipped:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for needle in forbidden:
+                self.assertNotIn(
+                    needle,
+                    text,
+                    f"{path.relative_to(ROOT)} must not embed a deployment identifier",
+                )
 
     def test_quality_gate_and_owner_feedback_feed_trends(self) -> None:
         checks = tuple(SourceCheck(f"source-{index}", "ok" if index < 7 else "error", 0) for index in range(10))

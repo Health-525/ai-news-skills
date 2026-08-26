@@ -6,6 +6,10 @@ or invented records.
 
 The maintained Feishu card displays:
 
+- an optional full-report link on the first card only, taken from `AI_NEWS_DAILY_REPORT_URL`. The
+  link is deployment configuration, never a repository literal. When it is unset the element is
+  omitted entirely; when it is set to anything other than a plain HTTPS URL, card rendering fails
+  closed rather than emitting an unusable link;
 - per-card total, current-window, recovered, official news, YouTube, AIHOT, GitHub radar,
   security advisory, model Hub, industry digest, Builders X, and model-selected highlight counts;
 - source sections ordered as official news, YouTube, AIHOT, GitHub radar, security

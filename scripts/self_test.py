@@ -931,14 +931,36 @@ def main() -> int:
 - 来源摘要：不可用（RSS 未提供足够的可用简介）
 """
     items = validate_frozen_digest(source, markdown)
-    cards = build_cards("2026-07-20", items)
-    assert len(items) == 2 and len(cards) == 1
-    report_link = cards[0]["body"]["elements"][0]["content"]
-    intro = cards[0]["body"]["elements"][1]["content"]
-    card_text = json.dumps(cards[0], ensure_ascii=False)
-    assert "查看完整 AI 新闻" in report_link and "example.com/app/" in report_link
-    assert "今日最新 2 条信号" in intro and "当期 1 · 补录 1" in intro
-    assert "<font color='orange'>补录</font>" in card_text
+    original_report_url = os.environ.get("AI_NEWS_DAILY_REPORT_URL")
+    try:
+        os.environ["AI_NEWS_DAILY_REPORT_URL"] = "https://example.com/app/app_demo"
+        cards = build_cards("2026-07-20", items)
+        assert len(items) == 2 and len(cards) == 1
+        report_link = cards[0]["body"]["elements"][0]["content"]
+        intro = cards[0]["body"]["elements"][1]["content"]
+        card_text = json.dumps(cards[0], ensure_ascii=False)
+        assert "查看完整 AI 新闻" in report_link
+        assert "https://example.com/app/app_demo" in report_link
+        assert "今日最新 2 条信号" in intro and "当期 1 · 补录 1" in intro
+        assert "<font color='orange'>补录</font>" in card_text
+
+        os.environ.pop("AI_NEWS_DAILY_REPORT_URL")
+        unlinked_cards = build_cards("2026-07-20", items)
+        assert "查看完整 AI 新闻" not in json.dumps(unlinked_cards, ensure_ascii=False)
+        assert unlinked_cards[0]["body"]["elements"][0]["content"].startswith("**今日最新")
+
+        os.environ["AI_NEWS_DAILY_REPORT_URL"] = "http://example.com/app/app_demo"
+        try:
+            build_cards("2026-07-20", items)
+        except ValueError as error:
+            assert "AI_NEWS_DAILY_REPORT_URL" in str(error)
+        else:
+            raise AssertionError("a non-HTTPS full-report link must fail loudly")
+    finally:
+        if original_report_url is None:
+            os.environ.pop("AI_NEWS_DAILY_REPORT_URL", None)
+        else:
+            os.environ["AI_NEWS_DAILY_REPORT_URL"] = original_report_url
 
     platform_source = json.loads(json.dumps(source))
     platform_source["date"] = "2026-07-20"
