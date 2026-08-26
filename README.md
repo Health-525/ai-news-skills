@@ -11,6 +11,7 @@
   <img alt="OpenClaw Runtime" src="https://img.shields.io/badge/Runtime-OpenClaw-0F172A?style=for-the-badge">
   <img alt="Feishu Delivery" src="https://img.shields.io/badge/Delivery-Feishu-00A870?style=for-the-badge">
   <img alt="Source Only" src="https://img.shields.io/badge/Trust-Source--Only-F97316?style=for-the-badge">
+  <img alt="MIT License" src="https://img.shields.io/badge/License-MIT-64748B?style=for-the-badge">
 </p>
 
 <p><code>SIGNAL IN // EVIDENCE LOCK // CARD OUT</code></p>
@@ -131,7 +132,8 @@ git clone https://github.com/Health-525/ai-news-skills.git
 cd ai-news-skills
 ```
 
-该仓库为私有仓库，克隆账户必须拥有访问权限。
+仓库不含任何部署值。所有租户标识、目标 ID、凭证与链接都通过外部 `runtime.env` 注入，
+未配置时对应功能保持关闭而不是回退到某个默认值。
 
 ### 03 / Verify
 
@@ -253,6 +255,7 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 | `AI_NEWS_FEISHU_APP_SECRET` | 可选；与应用 ID 成对覆盖 OpenClaw 本机飞书应用密钥 |
 | `AI_NEWS_BITABLE_APP_TOKEN` | AI 新闻多维表格 App Token |
 | `AI_NEWS_BITABLE_TABLE_ID` | AI 新闻数据表 ID |
+| `AI_NEWS_DAILY_REPORT_URL` | 可选；卡片首条「查看完整 AI 新闻」链接，须为 HTTPS。未配置则不渲染该行 |
 | `AI_NEWS_OPENCLAW_CONFIG` | 可选；OpenClaw 配置文件路径覆盖 |
 | `AI_NEWS_SECURITY_ADVISORIES_FILE` | 安全公告依赖白名单覆盖文件 |
 | `AI_NEWS_HUGGINGFACE_RADAR_FILE` | 模型 Hub 组织白名单覆盖文件 |
@@ -309,6 +312,7 @@ python scripts/daily_pipeline.py scheduled-group YYYY-MM-DD
 ai-news-skills/
 ├── SKILL.md                 # Agent 唯一运行合同
 ├── README.md                # 维护者入口
+├── LICENSE                  # MIT
 ├── agents/openai.yaml       # Skill UI 元数据
 ├── references/              # 来源、编辑、卡片、运营、定时和审批合同
 ├── tests/                   # 新能力的标准库单元测试
@@ -322,3 +326,19 @@ ai-news-skills/
 
 修改工作流时优先保持 `daily_pipeline.py` 作为唯一入口，并将复杂规则放入对应的
 `references/` 合同，避免在 README、Prompt 和实现中维护多份真相。
+
+## Third-party Sources
+
+除官方 RSS/API 外，项目还读取两个第三方公开端点，均为只读且可通过配置停用：
+
+- AIHOT 公开精选接口，提供其自有摘要作为证据。
+- [`zarazhangrui/follow-builders`](https://github.com/zarazhangrui/follow-builders) 维护的公开
+  `feed-x.json`，用于 Builders X 分区；本仓库只按 `builders-x-accounts.json` 白名单取用其中的
+  帖子原文。
+
+GitHub 开源雷达解析官方每日 Trending 页面（无官方 API），属尽力而为，页面结构变化会在
+`source_health` 中暴露而不是静默降级。请遵守各来源的服务条款并自行控制请求频率。
+
+## License
+
+[MIT](LICENSE)。

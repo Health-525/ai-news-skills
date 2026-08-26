@@ -2,5 +2,11 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .serena/
+.spec-workflow/
 .DS_Store
 Thumbs.db
+
+# Never commit deployment values or generated runtime artifacts.
+runtime.env
+.deployment-commit
+ai-news-skills.zip
